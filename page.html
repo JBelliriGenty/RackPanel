@@ -606,9 +606,9 @@ function render(s) {
     <h2 style="margin-top:22px">${tr("Alerts")}</h2>
     ${s.alerts.length ? `<ul class="alerts">${s.alerts.map((a) => `<li>${esc(tr(a))}</li>`).join("")}</ul>` : `<div class="calm">${tr("No alerts. Everything answers.")}</div>`}`;
 
-  const byName = Object.fromEntries(s.hosts.map((h) => [h.name, h]));
+  const byName = byHost(s.hosts);
   $("s-nodes").innerHTML = `<div class="rings" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">${s.nodes.map((n) =>
-    byName[n] ? cell(hostItem(byName[n]), 150, "big") : `<div class="card rg big down"><div class="rg-t"><b>${esc(n)}</b><span>${tr("no data")}</span></div></div>`).join("")}</div>`;
+    byName[uc(n)] ? cell(hostItem(byName[uc(n)]), 150, "big") : `<div class="card rg big down"><div class="rg-t"><b>${esc(n)}</b><span>${tr("no data")}</span></div></div>`).join("")}</div>`;
 
   const vms = s.hosts.filter((h) => h.vm);
   if (show("hosts", vms.length)) packView("hosts", vmGroups(vms));
@@ -942,13 +942,16 @@ var zoomed = {};  // screen id -> bubble group shown full screen (var: the rotat
 function unzoomAll() {
   if (zoomed && Object.values(zoomed).some(Boolean)) { zoomed = {}; if (lastState) render(lastState); }
 }
+// Host names are compared without case: Prometheus, Cairn Map and config.json may spell them differently.
+const uc = (n) => String(n).toUpperCase(), byHost = (hosts) => Object.fromEntries(hosts.map((h) => [uc(h.name), h]));
 function vmGroups(vms) {
   // Proxmox node of each guest, from Cairn Map (the topology); re-read every 5 min.
   if (!topo || Date.now() - topoAt > 300000) loadTopo();
   const node = {}, by = {};
-  (topo ? topo.machines : []).forEach((m) => m.guests.forEach((g) => { node[g.toUpperCase()] = m.name; }));
-  vms.forEach((h) => { const n = node[h.name] || tr("Others"); (by[n] = by[n] || []).push(h); });
-  return Object.keys(by).sort().map((n) => ({name: n, d: lastState && lastState.hosts.some((h) => h.name === n) ? `host|${n}` : "",
+  (topo ? topo.machines : []).forEach((m) => m.guests.forEach((g) => { node[uc(g)] = m.name; }));
+  vms.forEach((h) => { const n = node[uc(h.name)] || tr("Others"); (by[n] = by[n] || []).push(h); });
+  const all = lastState ? byHost(lastState.hosts) : {};
+  return Object.keys(by).sort().map((n) => ({name: n, d: all[uc(n)] ? `host|${all[uc(n)].name}` : "",
     items: by[n].map(hostItem)}));
 }
 function svcGroups(svcs) {
@@ -1070,9 +1073,9 @@ const ring = (h, big) => {
 };
 
 function zoneItems(s) {
-  const byName = Object.fromEntries(s.hosts.map((h) => [h.name, h]));
+  const byName = byHost(s.hosts);
   const items = [];
-  s.nodes.forEach((n) => items.push({zone: "nodes", key: "n-" + n, d: byName[n] ? `host|${n}` : "", label: n, ...ring(byName[n], true)}));
+  s.nodes.forEach((n) => { const h = byName[uc(n)]; items.push({zone: "nodes", key: "n-" + n, d: h ? `host|${h.name}` : "", label: n, ...ring(h, true)}); });
   s.hosts.filter((h) => h.vm).forEach((h) => items.push({zone: "hosts", key: "h-" + h.name, d: `host|${h.name}`, label: h.name, ...ring(h)}));
   s.services.forEach((x) => items.push({zone: "services", key: "s-" + x.name, d: `service|${x.name}`, label: x.name, dot: x.status}));
   return items;
@@ -1158,7 +1161,7 @@ const flowDur = (bps) => +Math.max(0.35, 4 - (Math.log10(Math.max(bps, 1e3)) - 3
 const flowW = (bps) => (1.5 + Math.max(0, Math.log10(Math.max(bps, 1)) - 3) * 0.8).toFixed(1);
 function paintTopo() {
   if (!topo || !lastState) return;
-  const t = topo, hosts = Object.fromEntries(lastState.hosts.map((h) => [h.name, h]));
+  const t = topo, hosts = byHost(lastState.hosts);
   const sw = new Set(lastState.switches.map((w) => w.name)), W = 1040, H = 600;
   const order = [t.router, ...t.gear.map((g) => g.name)];
   const ms = [...t.machines].sort((a, b) => (order.indexOf(a.parent) - order.indexOf(b.parent)) || a.name.localeCompare(b.name));
@@ -1181,7 +1184,7 @@ function paintTopo() {
   // Keep gear apart vertically (two switches with machines centred on the same row).
   t.gear.filter((g) => g.name !== wv).sort((a, b) => pos[a.name].y - pos[b.name].y).reduce((prev, g) => { if (prev != null && pos[g.name].y - prev < 60) pos[g.name].y = prev + 60; return pos[g.name].y; }, null);
   pos[t.router] = {x: RX, y: H / 2}; pos.Internet = {x: wv ? 26 : 30, y: H / 2};
-  const lvl = (name) => hostLevel(hosts[name]), now = performance.now() / 1000;
+  const lvl = (name) => hostLevel(hosts[uc(name)]), now = performance.now() / 1000;
   const link = (a, b, port, ax, bx) => {
     const p = pos[a], q = pos[b], x1 = p.x + (ax || 0), x2 = q.x - (bx || 0), mx = (x1 + x2) / 2;
     const d = `M${x1} ${p.y}C${mx} ${p.y} ${mx} ${q.y} ${x2} ${q.y}`, bps = port ? t.bps[port] : null;
@@ -1219,15 +1222,15 @@ function paintTopo() {
   svg += dot(RX, H / 2, 20, "box", t.router, sw.has(t.router) ? `switch|${t.router}` : "");
   t.gear.forEach((g) => { svg += dot(pos[g.name].x, pos[g.name].y, 16, "box", g.name, sw.has(g.name) ? `switch|${g.name}` : ""); });
   ms.forEach((m, i) => {
-    const {x, y: cy} = pos[m.name], h = hosts[m.name], lv = lvl(m.name);
-    svg += `<g ${h ? `data-d="host|${esc(m.name)}"` : ""}><rect x="${x - 64}" y="${cy - 17}" width="128" height="34" rx="9" class="box ${lv === "bad" ? "st-bad" : ""}"/>
+    const {x, y: cy} = pos[m.name], h = hosts[uc(m.name)], lv = lvl(m.name);
+    svg += `<g ${h ? `data-d="host|${esc(h.name)}"` : ""}><rect x="${x - 64}" y="${cy - 17}" width="128" height="34" rx="9" class="box ${lv === "bad" ? "st-bad" : ""}"/>
       <circle cx="${x - 50}" cy="${cy}" r="5" class="st-${lv}"/>${lv === "bad" ? `<circle cx="${x - 50}" cy="${cy}" r="5" class="alarm"/>` : ""}
       <text x="${x - 40}" y="${cy + 4}">${esc(m.name)}</text><text x="${x + 58}" y="${cy + 4}" text-anchor="end" class="sm">${h && h.up ? Math.round((h.cpu || 0) * 100) + " %" : ""}</text></g>`;
     const top = cy - (rows[i] * 36) / 2 + 12;
     if (m.guests.length) svg += `<path class="base" d="M${x + 64} ${cy}H576V${top}V${top + (rows[i] - 1) * 36}" stroke-width="1"/>`;
     m.guests.forEach((g, j) => {
       const gx = 592 + (j % PER) * 56, gy = top + Math.floor(j / PER) * 36;
-      svg += dot(gx, gy, 8, "st-" + lvl(g.toUpperCase()), g.length > 9 ? g.slice(0, 8) + "…" : g, hosts[g.toUpperCase()] ? `host|${g.toUpperCase()}` : "", true);
+      svg += dot(gx, gy, 8, "st-" + lvl(g), g.length > 9 ? g.slice(0, 8) + "…" : g, hosts[uc(g)] ? `host|${hosts[uc(g)].name}` : "", true);
     });
   });
   cards({data: svg});
@@ -1267,7 +1270,7 @@ function wire(x1, y1, x2, y2, bps, d) {
     `<path class="hit" d="${p}"/></g>`;
 }
 function nodeBox(x, y, name, sub, d) {
-  const h = (lastState.hosts || []).find((z) => z.name === name.toUpperCase()), lv = h ? hostLevel(h) : "na";
+  const h = (lastState.hosts || []).find((z) => uc(z.name) === uc(name)), lv = h ? hostLevel(h) : "na";
   return `<g ${h ? `data-d="host|${esc(h.name)}"` : d ? `data-d="${esc(d)}"` : ""}><rect x="${x - 75}" y="${y - 17}" width="150" height="34" rx="9" class="box"/>
     <circle cx="${x - 61}" cy="${y}" r="5" class="st-${lv}"/><text x="${x - 51}" y="${y - 1}">${esc(name.length > 15 ? name.slice(0, 14) + "…" : name)}</text>
     <text x="${x - 51}" y="${y + 11}" class="sm">${esc(sub || "")}</text></g>`;

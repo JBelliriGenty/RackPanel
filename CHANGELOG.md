@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.1 (2026-11-10)
+
+- Host names are compared without case everywhere: a guest whose name
+  Cairn Map spells differently from Prometheus (`web` and `WEB`) is still
+  grouped under its node on the VM screen and coloured on the topology, and a
+  node listed in `config.json` in another case still gets its big card and
+  stays off the VM screen.
+
 ## 1.0.0 (2026-11-10)
 
 First public release. Rack Panel first ran one home lab's rack screen;

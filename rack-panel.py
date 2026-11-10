@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 CACHE_SECONDS = 10
 TOPOLOGY_SECONDS = 300  # Cairn Map is re-read every 5 min
@@ -409,7 +409,7 @@ def build_state(r, now, limits=None):
             "mem": max(0, mm.get("used", 0) - arc.get(name, 0)) / (sum(mm.values()) or 1) if mm else None,
             "disk": root.get("used", 0) / (sum(root.values()) or 1) if root else None,
             "temp": temp.get(name),
-            "vm": name not in PHYSICAL,
+            "vm": name.upper() not in PHYSICAL,
             "rx": _num(net[(name, "receive")]) if (name, "receive") in net else None,
             "tx": _num(net[(name, "transmit")]) if (name, "transmit") in net else None,
         })

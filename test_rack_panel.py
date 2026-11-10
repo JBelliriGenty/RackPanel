@@ -64,6 +64,10 @@ assert (node1["name"], node1["up"], node1["mem"], node1["disk"]) == ("NODE1", Tr
 assert vault == {"name": "VAULT", "up": False, "cpu": None, "mem": None, "disk": None, "temp": None, "vm": False, "rx": None, "tx": None}
 assert (node1["rx"], node1["tx"]) == (1000.0, 869.0)
 assert node1["vm"] is False and "ADMIN" not in rp.PHYSICAL  # bare metal stays off the VM screen
+# Names are compared without case: a lowercase host_name of a configured node is still bare metal.
+low = rp.fetch({e: [({**m, "host_name": m["host_name"].lower()} if "host_name" in m else m, v) for m, v in ROWS[k]]
+                for k, e in rp.QUERIES.items()}.__getitem__)
+assert [(h["name"], h["vm"]) for h in rp.build_state(low, NOW)["hosts"]] == [("node1", False), ("vault", False)]
 # Services = web probes only, with their zone (never the URL); a down ping probe still alerts.
 assert [(x["name"], x["zone"]) for x in s["services"]] == [("Grafana", "Internal"), ("Dockge", "Public")], s["services"]
 assert "Ping MONITOR: down" in s["alerts"] and "monitor_url" not in str(s)
