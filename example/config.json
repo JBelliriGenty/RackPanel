@@ -1,0 +1,28 @@
+{
+  "title": "Lab rack",
+  "lang": "en",
+  "listen": "127.0.0.1:3006",
+  "prometheus": "http://127.0.0.1:9099",
+  "nodes": ["PVE1", "PVE2", "PVE3", "NAS", "BACKUP"],
+  "physical": ["KIOSK"],
+  "modules": {
+    "hostmetrics": {},
+    "uptime_kuma": {"public": [".example.com"], "internal": [".lab.home"]},
+    "mikrotik": {"wan": "CORE ether1"},
+    "docker": {"transient_hosts": ["CI"]},
+    "backups": {},
+    "topology": {
+      "url": "http://127.0.0.1:9099",
+      "data_vlan": "vlan10", "admin_vlan": "vlan99",
+      "vlans": [{"id": "99", "name": "Admin"}, {"id": "20", "name": "IoT"}],
+      "storage_links": [["NAS", "enp1s0f0", "PVE1"], ["NAS", "enp1s0f1", "PVE2"]]
+    },
+    "restart": {
+      "clients": ["127.0.0.1"],
+      "pve_api": ["https://pve1.lab.home:8006", "https://pve2.lab.home:8006"],
+      "pve_token_id": "rack-panel@pve!restart",
+      "protected_names": ["HOME"],
+      "docker_hosts": {"PROXY": "192.0.2.21", "MONITOR": "192.0.2.23"}
+    }
+  }
+}

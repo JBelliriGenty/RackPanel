@@ -1,0 +1,1398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Rack Panel</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23065f46'/%3E%3Crect x='6' y='6.5' width='20' height='5.4' rx='1.6' fill='%23fff'/%3E%3Crect x='6' y='13.3' width='20' height='5.4' rx='1.6' fill='%23fff'/%3E%3Crect x='6' y='20.1' width='20' height='5.4' rx='1.6' fill='%23fff'/%3E%3Cpath d='M9 9.2h7.5M9 16h7.5M9 22.8h7.5' stroke='%23a7f3d0' stroke-width='1.3' stroke-linecap='round'/%3E%3Ccircle cx='22.4' cy='9.2' r='1.5' fill='%2310b981'/%3E%3Ccircle cx='22.4' cy='16' r='1.5' fill='%2310b981'/%3E%3Ccircle cx='22.4' cy='22.8' r='1.5' fill='%23f59e0b'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0b0e13; --panel: #141922; --line: #232b38; --text: #e7ecf3; --muted: #8592a6;
+    --ok: #34c77b; --warn: #f2b134; --bad: #f0524f; --accent: #5aa9ff; --scroll: #2f3a4d;
+  }
+  * { box-sizing: border-box; margin: 0; scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
+  /* Thin themed scrollbars (Chromium uses scrollbar-color above; the pseudo-elements cover older engines). */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 3px; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); overflow: hidden;
+    font: 16px/1.3 system-ui, "Segoe UI", Roboto, sans-serif; font-variant-numeric: tabular-nums;
+    -webkit-user-select: none; user-select: none; }
+  header { height: 64px; display: flex; align-items: center; gap: 16px; padding: 0 20px;
+    border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 22px; font-weight: 600; letter-spacing: .02em; }
+  #clock { margin-left: auto; font-size: 30px; font-weight: 600; }
+  #status { padding: 8px 16px; border-radius: 999px; font-weight: 600; font-size: 17px; border: 0;
+    background: var(--ok); color: #06150d; }
+  #status.bad { background: var(--bad); color: #fff; }
+  #status.stale { background: var(--warn); color: #1d1300; }
+  #age { color: var(--muted); font-size: 14px; }
+  /* Vertical axis: settings above the carousel (pull down to open). */
+  #v { height: 100%; overflow-y: auto; scroll-snap-type: y mandatory; scrollbar-width: none; }
+  #v::-webkit-scrollbar { display: none; }
+  #v > * { height: 100%; scroll-snap-align: start; scroll-snap-stop: always; }
+  #home { display: flex; flex-direction: column; }
+  main { flex: 1; min-height: 0; display: flex; overflow-x: auto; scroll-snap-type: x mandatory;
+    scrollbar-width: none; }
+  main::-webkit-scrollbar { display: none; }
+  section { flex: 0 0 100%; scroll-snap-align: start; padding: 18px 20px; overflow-y: auto; }
+  main > section { display: flex; flex-direction: column; } main > section[hidden] { display: none; }
+  h2 .vt { float: right; margin-top: -10px; border: 1px solid var(--line); background: #1b2230; color: var(--text); font: inherit;
+    font-size: 14px; text-transform: none; letter-spacing: 0; min-height: 40px; padding: 0 14px; border-radius: 999px; }
+  /* Circle view (circle packing, Cairn Map style): group circles holding one circle per element. */
+  .pk { flex: 1; min-height: 0; } .pk svg { width: 100%; height: 100%; display: block; }
+  .pk .pg { fill: #111620; stroke: var(--line); stroke-width: .8; }
+  .pk text { fill: var(--text); font-family: system-ui, sans-serif; text-anchor: middle; pointer-events: none; }
+  .pk .pgl { fill: var(--muted); font-size: 7px; font-weight: 600; letter-spacing: .04em; }
+  .pk .pll { font-size: 4.4px; font-weight: 600; } .pk .pls { font-size: 3.4px; fill: var(--muted); }
+  .pk .pl { stroke-width: .9; transition: fill .6s, stroke .6s; }
+  .pk .trk { fill: none; stroke: #222a37; stroke-width: 1.1; } .pk .arc { fill: none; stroke-width: 1.1; stroke-linecap: round; }
+  .pk .lv-ok { fill: color-mix(in srgb, var(--ok) 16%, var(--panel)); stroke: var(--ok); }
+  .pk .lv-warn { fill: color-mix(in srgb, var(--warn) 22%, var(--panel)); stroke: var(--warn); }
+  .pk .lv-bad { fill: color-mix(in srgb, var(--bad) 28%, var(--panel)); stroke: var(--bad); }
+  .pk .lv-info { fill: color-mix(in srgb, var(--accent) 20%, var(--panel)); stroke: var(--accent); }
+  .pk .alarm { fill: none; stroke: var(--bad); stroke-width: 1.2; transform-box: fill-box; transform-origin: center; animation: ping 1.6s ease-out infinite; }
+  .pk.anim .pi { animation: pop .45s cubic-bezier(.2, .9, .3, 1.2) backwards; animation-delay: calc(var(--i) * 6ms);
+    transform-box: fill-box; transform-origin: center; }
+  @keyframes pop { from { transform: scale(0); opacity: 0; } }
+  /* Ring gauges (Cairn Map style): one arc per measure, one fixed colour per measure, values as pills. */
+  .lg { float: right; display: inline-flex; gap: 14px; margin: -6px 14px 0 0; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text); }
+  .lg i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+  .gauge { flex: none; overflow: visible; }
+  .gauge .trk { fill: none; stroke: #222a37; stroke-width: 2.6; }
+  .gauge .arc { fill: none; stroke-width: 2.6; stroke-linecap: round; }
+  .arc { transition: stroke .6s; }
+  .gauge .core { stroke: var(--panel); stroke-width: 1; }
+  .lvf-ok { fill: var(--ok); } .lvf-warn { fill: var(--warn); } .lvf-bad { fill: var(--bad); } .lvf-info { fill: var(--accent); }
+  .gauge .alarm { fill: none; stroke: var(--bad); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: ping 1.6s ease-out infinite; }
+  .rings { display: grid; gap: 8px; }
+  .rg { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; min-width: 0; }
+  .rg-t { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+  .rg-t b { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 1px; }
+  .rg-t span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 11.5px; line-height: 15px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; white-space: nowrap; color: var(--text); }
+  .rg.tight { padding: 6px 10px; } .rg.tight .rg-t { gap: 1px; } .rg.tight .rg-t b { font-size: 14px; } .rg.tight .rg-t span { line-height: 14px; }
+  .rg.down { background: #2a1517; border-color: var(--bad); }
+  .rg.big { gap: 16px; align-items: center; } .rg.big .rg-t { gap: 4px; }
+  .rg.big .rg-t b { font-size: 24px; } .rg.big .rg-t span { font-size: 15px; line-height: 22px; padding: 0 10px; }
+  .zoomhead { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .zoomhead h3 { font-size: 22px; }
+  .zoomhead button { border: 1px solid var(--line); background: #1b2230; color: var(--text); font: inherit; font-size: 15px; min-height: 42px; padding: 0 16px; border-radius: 999px; }
+  .zoomin { animation: zoomin .35s cubic-bezier(.2, .9, .3, 1.1); }
+  @keyframes zoomin { from { opacity: 0; transform: scale(.88); } }
+  .pk .pgl.zm { fill: var(--text); }
+  .ct { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 3px 0; border-top: 1px solid var(--line); }
+  .ct b { font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ct span { color: var(--muted); min-width: 52px; text-align: right; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: 14px; }
+  nav { height: 56px; display: flex; justify-content: center; align-items: center; gap: 8px; }
+  nav button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 15px;
+    padding: 10px 14px; border-radius: 999px; min-height: 44px; }
+  nav button.on { background: var(--panel); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+  .grid { display: grid; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .big { font-size: 46px; font-weight: 700; line-height: 1.05; }
+  .label { color: var(--muted); font-size: 14px; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  .bar { height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; margin: 6px 0 10px; }
+  .bar i { display: block; height: 100%; background: var(--ok); border-radius: 5px; }
+  .bar i.warn { background: var(--warn); } .bar i.bad { background: var(--bad); }
+  .row { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+  .alerts li { list-style: none; padding: 12px 14px; border-radius: 10px; background: #2a1517;
+    border-left: 4px solid var(--bad); margin-bottom: 8px; font-size: 18px; }
+  .calm { font-size: 22px; color: var(--ok); padding: 22px 0; }
+  .host { padding: 10px 12px; border-radius: 10px; }
+  .host b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .host span { display: inline-block; width: 50%; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .host.down { background: #2a1517; border-color: var(--bad); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; background: var(--ok); }
+  .dot.s0 { background: var(--bad); } .dot.s2 { background: var(--warn); } .dot.s3 { background: var(--accent); }
+  .svc { display: flex; align-items: center; padding: 9px 12px; font-size: 14px; }
+  .svc em { margin-left: auto; font-style: normal; color: var(--muted); font-size: 13px; }
+  #pull { border: 0; background: transparent; color: var(--muted); font-size: 24px; min-width: 44px; min-height: 44px; }
+  #settings { padding: 14px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .set-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; flex: 1; min-height: 0; }
+  .set-col { display: flex; flex-direction: column; gap: 12px; }
+  .card h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+  .stp { display: flex; align-items: center; justify-content: space-between; min-height: 46px; font-size: 15px; }
+  .ctl { display: flex; align-items: center; gap: 6px; }
+  .ctl button, .chip, .act, .tog { min-width: 44px; min-height: 40px; border-radius: 10px; border: 1px solid var(--line);
+    background: #1b2230; color: var(--text); font: inherit; font-size: 20px; }
+  .ctl output { min-width: 66px; text-align: center; font-weight: 600; }
+  .tog { font-size: 15px; padding: 0 14px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .chip { font-size: 14px; padding: 0 12px; }
+  .chip.on, .tog.on { background: var(--accent); color: #04121f; border-color: transparent; }
+  .act { width: 100%; margin-top: 8px; font-size: 16px; padding: 10px; }
+  /* Reboot in amber, power off in red; armed = filled, waiting for the second touch. */
+  .act.c-reboot { color: var(--warn); border-color: var(--warn); background: #2a2210; }
+  .act.c-poweroff { color: var(--bad); border-color: var(--bad); background: #2a1517; }
+  .act.arm { background: var(--bad); color: #fff; border-color: transparent; }
+  .act.c-reboot.arm { background: var(--warn); color: #1d1300; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; font-size: 15px; border-bottom: 1px solid var(--line); }
+  .kv span:first-child { color: var(--muted); }
+  #settings.off .ctl button, #settings.off .chip, #settings.off .tog, #settings.off .act { opacity: .35; pointer-events: none; }
+  /* The language works everywhere (kept in this browser when no kiosk agent answers). */
+  #langs { display: flex; gap: 6px; align-items: center; } #settings.off #langs button { opacity: 1; pointer-events: auto; }
+  #error { display: none; position: fixed; inset: auto 20px 64px 20px; background: var(--warn); color: #1d1300;
+    padding: 12px 16px; border-radius: 10px; font-weight: 600; }
+  /* Lot 2: tiles open a full-screen detail sheet. */
+  [data-d] { cursor: pointer; transition: transform .12s ease-out, border-color .12s; }
+  [data-d]:active { transform: scale(.97); border-color: var(--accent); }
+  #sheet { position: fixed; inset: 0; z-index: 10; background: var(--bg); display: flex; flex-direction: column;
+    touch-action: pan-y; animation: sh-in .22s ease-out; }
+  #sheet[hidden] { display: none; }
+  @keyframes sh-in { from { opacity: 0; transform: translateY(24px); } }
+  .sh-head { height: 64px; flex: none; display: flex; align-items: center; gap: 14px; padding: 0 20px; border-bottom: 1px solid var(--line); }
+  .sh-head h1 { font-size: 24px; font-weight: 700; }
+  .sh-head > div { min-width: 0; }
+  .sh-desc { font-size: 14px; color: var(--muted, #8592a6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sh-desc:empty { display: none; }
+  .sh-head .label { font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+  .ranges { margin-left: auto; display: flex; gap: 6px; }
+  .ranges button, #sh-close { min-width: 56px; min-height: 44px; border-radius: 10px; border: 1px solid var(--line);
+    background: #1b2230; color: var(--text); font: inherit; font-size: 15px; }
+  .ranges button.on { background: var(--accent); color: #04121f; border-color: transparent; }
+  #sh-close { font-size: 22px; margin-left: 8px; }
+  #sh-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 20px 20px; display: grid; gap: 12px; align-content: start; }
+  .facts { grid-column: 1 / -1; display: flex; gap: 12px; }
+  .facts .card { flex: 1; padding: 10px 14px; }
+  .facts b { display: block; font-size: 26px; font-weight: 700; }
+  .ch { padding: 10px 14px 8px; min-width: 0; }
+  .ch .cur { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; min-height: 34px; }
+  .ch .cur b { font-size: 28px; font-weight: 700; }
+  .ch .cur small { font-size: 12px; color: var(--muted); margin-right: 4px; }
+  .sw { display: inline-block; width: 10px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+  .plot { position: relative; height: 88px; margin-top: 4px;
+    background: linear-gradient(var(--line) 1px, transparent 1px) 0 0 / 100% 33.33%; border-bottom: 1px solid var(--line); }
+  .plot svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+  .plot path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+  .plot path.area { stroke: none; }
+  /* Curves sweep in left to right (dash tricks break with non-scaling-stroke in Chromium). */
+  .plot.draw svg { animation: draw .9s ease-out; }
+  @keyframes draw { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  .plot.draw .live { animation: fade .3s .8s both; }
+  @keyframes fade { from { opacity: 0; } }
+  .ch .cur.multi { gap: 10px; } .ch .cur.multi b { font-size: 18px; }
+  .ax { position: absolute; left: 4px; font-size: 11px; color: var(--muted); background: var(--panel); padding: 0 3px; }
+  .ax.hi { top: -2px; } .ax.lo { bottom: 2px; }
+  .live { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; }
+  .live::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: ping 2s ease-out infinite; }
+  @keyframes ping { from { transform: scale(1); opacity: .7; } to { transform: scale(3.2); opacity: 0; } }
+  .xs { font-size: 11px; margin-top: 3px; }
+  .bars { grid-column: 1 / -1; }
+  .bars .row { font-size: 14px; }
+  .bars .bar i { transition: width .8s ease-out; }
+  .empty { grid-column: 1 / -1; color: var(--muted); font-size: 20px; padding: 40px 0; text-align: center; }
+  /* Lot 3: live map below the carousel (swipe up). Zones = six live blocks, Topologie = links with flows. */
+  #map { display: flex; flex-direction: column; gap: 10px; padding: 10px 20px 14px; overflow: hidden; }
+  .map-head { display: flex; align-items: center; gap: 14px; min-height: 48px; }
+  .map-head h1 { font-size: 22px; }
+  #map-close { width: auto; margin: 0 0 0 8px; padding: 8px 16px; }
+  #to-map { border: 0; background: var(--panel); color: var(--text); font: inherit; font-size: 15px; min-height: 40px;
+    padding: 0 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); }
+  #map-zones { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1.15fr 1.15fr; grid-template-rows: 1fr 1fr; gap: 10px; }
+  #map-zones[hidden], #map-topo[hidden] { display: none; }
+  .zone { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; min-height: 0; overflow: hidden;
+    display: flex; flex-direction: column; gap: 8px; }
+  .zone h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600;
+    display: flex; justify-content: space-between; }
+  .zone h3 span { color: var(--text); letter-spacing: 0; }
+  .items { display: grid; gap: 6px 4px; align-content: start; }
+  .it { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+  .it small { font-size: 10px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @property --p { syntax: "<number>"; inherits: false; initial-value: 0; }
+  .ring { --p: 0; --c: var(--ok); position: relative; width: 34px; height: 34px; border-radius: 50%; flex: none;
+    background: conic-gradient(var(--c) calc(var(--p) * 1turn), #263041 0); transition: --p .9s ease-out; }
+  .ring > i { position: absolute; inset: 4px; border-radius: 50%; background: var(--panel); display: grid; place-items: center;
+    font-style: normal; font-size: 10px; font-weight: 600; }
+  .items.hosts { grid-template-columns: repeat(6, 1fr); gap: 3px 2px; } .items.hosts .ring { width: 30px; height: 30px; }
+  .items.hosts .ring > i { inset: 3px; }
+  .items.svcs { grid-template-columns: repeat(4, 1fr); gap: 0 6px; }
+  .items.svcs .it { flex-direction: row; gap: 5px; justify-content: flex-start; height: 15px; }
+  .items.svcs .sdot { width: 9px; height: 9px; }
+  .ring.big { width: 62px; height: 62px; } .ring.big > i { inset: 6px; font-size: 14px; }
+  .ring.warn { --c: var(--warn); } .ring.bad { --c: var(--bad); }
+  .ring.off { background: #2a1517; box-shadow: inset 0 0 0 2px var(--bad); }
+  .ring.na { background: #263041; }
+  .pulse::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 2px solid var(--bad);
+    animation: ping 1.6s ease-out infinite; }
+  .ring.warn.pulse::after { border-color: var(--warn); }
+  .sdot { width: 12px; height: 12px; border-radius: 50%; background: var(--ok); position: relative; flex: none; }
+  .sdot.s0 { background: var(--bad); } .sdot.s2 { background: var(--warn); } .sdot.s3 { background: var(--accent); }
+  .sdot.s0::after { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2px solid var(--bad); animation: ping 1.6s ease-out infinite; }
+  .zbig { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  .zbig b { font-size: 28px; font-weight: 700; } .zbig small { color: var(--muted); font-size: 12px; }
+  .spark { width: 100%; height: 54px; }
+  .spark path { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .zalerts li { list-style: none; font-size: 13px; padding: 5px 8px; border-left: 3px solid var(--bad); background: #2a1517;
+    border-radius: 6px; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fill { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .fill i { display: block; height: 100%; background: var(--ok); border-radius: 4px; transition: width .9s ease-out; }
+  .fill i.warn { background: var(--warn); } .fill i.bad { background: var(--bad); }
+  .zrow { font-size: 13px; display: flex; justify-content: space-between; gap: 8px; margin-bottom: 3px; }
+  #map-topo { flex: 1; min-height: 0; position: relative; }
+  #map-topo svg { width: 100%; height: 100%; }
+  /* One card per network, swiped sideways (native scroll-snap, no gesture code). */
+  #topo-cards { height: 100%; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  #topo-cards::-webkit-scrollbar { display: none; }
+  .tcard { flex: 0 0 100%; scroll-snap-align: start; display: flex; flex-direction: column; min-width: 0; }
+  .tcard h3 { margin: 0 0 2px; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+  .tcard > div { flex: 1; min-height: 0; }
+  #topo-dots { position: absolute; top: 0; right: 4px; display: flex; gap: 6px; }
+  #topo-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+  #topo-dots i.on { background: var(--accent); }
+  #map-topo text { fill: var(--text); font: 600 12px system-ui, sans-serif; }
+  #map-topo text.sm { fill: var(--muted); font-size: 9px; font-weight: 400; }
+  #map-topo .base { fill: none; stroke: #2a3446; }
+  #map-topo .flow { fill: none; stroke: var(--accent); stroke-dasharray: 3 13; stroke-linecap: round; animation: flow 2s linear infinite; }
+  #map-topo .adm { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 5; opacity: .6; }
+  #map-topo .hit { fill: none; stroke: transparent; stroke-width: 16; }
+  @keyframes flow { to { stroke-dashoffset: -16; } }
+  #map-topo .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.5; }
+  #map-topo .st-ok { fill: var(--ok); } #map-topo .st-warn { fill: var(--warn); } #map-topo .st-bad { fill: var(--bad); }
+  #map-topo .st-na { fill: #3a4558; }
+  #map-topo .box.st-bad { fill: #2a1517; stroke: var(--bad); }
+  #map-topo .alarm { fill: none; stroke: var(--bad); stroke-width: 2; transform-box: fill-box; transform-origin: center;
+    animation: ping 1.6s ease-out infinite; }
+  /* Lot 6: restart from the sheet (double touch), then the admin code on an on-screen keypad. */
+  #sh-restart { min-height: 44px; padding: 0 16px; border-radius: 10px; font: inherit; font-size: 15px;
+    color: var(--warn); border: 1px solid var(--warn); background: #2a2210; }
+  #sh-restart.arm { background: var(--warn); color: #1d1300; }
+  #pad { position: fixed; inset: 0; z-index: 20; background: rgba(5, 7, 10, .82); display: flex; align-items: center; justify-content: center; }
+  #pad[hidden] { display: none; }
+  #pad .box { width: 380px; background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px 20px 20px;
+    animation: sh-in .18s ease-out; }
+  #pad h3 { font-size: 18px; margin-bottom: 4px; }
+  #pad-msg { min-height: 20px; font-size: 14px; color: var(--muted); }
+  #pad-msg.bad { color: var(--bad); } #pad-msg.ok { color: var(--ok); }
+  #pad-dots { display: flex; justify-content: center; gap: 12px; height: 34px; align-items: center; margin: 8px 0 12px; }
+  #pad-dots i { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--muted); }
+  #pad-dots i.on { background: var(--text); border-color: var(--text); }
+  #pad-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  #pad-keys button { min-height: 60px; border-radius: 12px; border: 1px solid var(--line); background: #1b2230; color: var(--text); font: inherit; font-size: 26px; }
+  #pad-keys button:active { background: var(--accent); color: #04121f; }
+  #pad-keys .ok { background: var(--accent); color: #04121f; border-color: transparent; font-size: 18px; font-weight: 700; }
+  #pad-keys .ok:disabled { opacity: .35; }
+  #pad-cancel { width: 100%; margin-top: 10px; min-height: 46px; border-radius: 12px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: inherit; font-size: 16px; }
+</style>
+</head>
+<body>
+<div id="v">
+<section id="settings" class="off">
+  <div class="row"><h1 style="font-size:22px" data-t="Settings">Settings</h1><span id="set-note" class="label"></span>
+    <span id="langs"><button type="button" class="tog" data-lang="en">English</button><button type="button" class="tog" data-lang="fr">Français</button>
+    <button id="close" type="button" class="act" style="width:auto;margin:0 0 0 10px;padding:8px 16px" data-t="Close ✕">Close ✕</button></span></div>
+  <div class="set-grid">
+    <div class="set-col"><div class="card" id="c-screen"></div></div>
+    <div class="set-col"><div class="card" id="c-limits"></div><div class="card" id="c-actions"></div></div>
+    <div class="set-col"><div class="card" id="c-system"></div><div class="card" id="c-rotate"></div></div>
+  </div>
+</section>
+<div id="home">
+<header>
+  <button id="pull" type="button" aria-label="Settings">⚙</button>
+  <h1 id="title">Rack Panel</h1>
+  <button id="status" type="button">…</button>
+  <span id="age"></span>
+  <span id="clock"></span>
+  <button id="to-map" type="button" data-t="Map ↑">Map ↑</button>
+</header>
+<main id="slides">
+  <section data-id="overview" data-title="Overview"><h2><span data-t="Overview">Overview</span></h2><div id="s-overview"></div></section>
+  <section data-id="nodes" data-mod="hostmetrics" data-title="Nodes"><h2><span data-t="Physical nodes and storage">Physical nodes and storage</span> <span class="lg" data-lg="cpu mem disk"></span></h2><div id="s-nodes"></div></section>
+  <section data-id="hosts" data-mod="hostmetrics" data-title="VMs"><h2><span data-t="VMs and LXC containers">VMs and LXC containers</span> <button type="button" class="vt" data-vt="hosts"></button><span class="lg" data-lg="cpu mem disk"></span></h2><div id="s-hosts"></div></section>
+  <section data-id="services" data-mod="uptime_kuma" data-title="Services"><h2><span data-t="Web services (Uptime Kuma)">Web services (Uptime Kuma)</span> <button type="button" class="vt" data-vt="services"></button></h2><div id="s-services"></div></section>
+  <section data-id="docker" data-mod="docker" data-title="Docker"><h2><span data-t="Docker containers">Docker containers</span> <button type="button" class="vt" data-vt="docker"></button><span class="lg" data-lg="cpu mem"></span></h2><div id="s-docker"></div></section>
+  <section data-id="storage" data-title="Storage"><h2><span data-t="Storage and backups">Storage and backups</span></h2><div id="s-storage"></div></section>
+  <section data-id="network" data-mod="mikrotik" data-title="Network"><h2><span data-t="Network">Network</span></h2><div id="s-network"></div></section>
+</main>
+<nav id="dots"></nav>
+</div>
+<section id="map">
+  <div class="map-head"><h1 data-t="Map">Map</h1><span class="label" id="map-note"></span>
+    <div class="ranges" id="map-views"><button type="button" data-view="zones" class="on" data-t="Zones">Zones</button><button type="button" data-view="topo" data-t="Topology">Topology</button></div>
+    <button id="map-close" type="button" class="act" data-t="Close ✕">Close ✕</button></div>
+  <div id="map-zones"></div>
+  <div id="map-topo" hidden><div id="topo-cards"></div><div id="topo-dots"></div></div>
+</section>
+</div>
+<div id="error"></div>
+<div id="sheet" hidden>
+  <div class="sh-head"><div><div class="label" id="sh-kind"></div><h1 id="sh-title"></h1><p id="sh-desc" class="sh-desc"></p></div>
+    <div class="ranges" id="sh-ranges"><button type="button" data-r="1h">1 h</button><button type="button" data-r="6h">6 h</button>
+      <button type="button" data-r="24h">24 h</button><button type="button" data-r="7d" data-t="7 d">7 d</button></div>
+    <button id="sh-restart" type="button" hidden>Restart</button>
+    <button id="sh-close" type="button" aria-label="Close">✕</button></div>
+  <div id="sh-body"></div>
+</div>
+<div id="pad" hidden><div class="box">
+  <h3 id="pad-title"></h3><div id="pad-msg"></div><div id="pad-dots"></div>
+  <div id="pad-keys"></div>
+  <button id="pad-cancel" type="button" data-t="Cancel">Cancel</button>
+</div></div>
+<script>
+"use strict";
+const POLL_MS = 15000;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const pct = (x) => x == null ? "–" : Math.round(x * 100) + PC();
+const level = (x, warn, bad) => x == null ? "" : x >= bad ? "bad" : x >= warn ? "warn" : "ok";
+const bar = (x, warn = 0.75, bad = 0.9) => `<div class="bar"><i class="${level(x, warn, bad)}" style="width:${Math.min(100, (x || 0) * 100)}%"></i></div>`;
+const bytes = (b) => { const u = LANG === "fr" ? ["o", "Ko", "Mo", "Go", "To"] : ["B", "KB", "MB", "GB", "TB"]; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return b.toFixed(i > 2 ? 1 : 0) + " " + u[i]; };
+const mbits = (x) => x == null ? "–" : x >= 1000 ? (x / 1000).toFixed(2) + " Gbit/s" : x.toFixed(x < 10 ? 1 : 0) + " Mbit/s";
+
+// ---- Language: English source strings, French below. Server messages (alerts, errors) are translated by
+// pattern: "{name} is protected" matches "VM01 is protected". ----
+const FR = {
+  "Settings": "Réglages", "Close ✕": "Fermer ✕", "Map ↑": "Carte ↑", "Map": "Carte", "Zones": "Zones", "Topology": "Topologie",
+  "Overview": "Vue d'ensemble", "Nodes": "Nœuds", "VMs": "VM", "Services": "Services", "Docker": "Docker", "Storage": "Stockage",
+  "Network": "Réseau", "Physical nodes and storage": "Nœuds et stockage physiques", "VMs and LXC containers": "VM et conteneurs LXC",
+  "Web services (Uptime Kuma)": "Services web (Uptime Kuma)", "Docker containers": "Conteneurs Docker",
+  "Storage and backups": "Stockage et sauvegardes", "7 d": "7 j", "Cancel": "Annuler", "Restart": "Redémarrer",
+  "Restart display": "Relancer l'affichage", "Reboot device": "Redémarrer l'appareil", "Power off device": "Éteindre l'appareil",
+  "charging": "en charge", "on battery": "sur batterie", "capped (battery limit)": "plafonnée (Battery Limit)", "full": "pleine",
+  "Screen asleep": "Écran en veille", "Settings are available on the rack screen only": "Réglages disponibles sur l'écran de la baie seulement",
+  "Screen": "Écran", "Brightness": "Luminosité", "Off at night": "Extinction la nuit", "On": "Activée", "Off": "Désactivée",
+  "Night from": "Nuit à partir de", "Until": "Jusqu'à", "Wake on touch": "Réveil au toucher",
+  "Sleep when nobody is there (camera)": "Veille si personne (caméra)", "After": "Après", "Motion threshold": "Seuil de mouvement",
+  "Rotation": "Défilement", "Time per screen": "Durée par écran", "Pause after a touch": "Pause après un toucher",
+  "Alert thresholds": "Seuils d'alerte", "Disk or pool full": "Disque ou pool plein", "Host temperature": "Température d'un hôte",
+  "Switch temperature": "Température d'un switch", "Backup late after": "Sauvegarde en retard après", "Device": "Appareil",
+  "Touch again to confirm": "Toucher encore pour confirmer", "Change the admin code": "Changer le code admin",
+  "Set the admin code": "Définir le code admin", "System": "Système", "IP address": "Adresse IP", "Battery": "Batterie",
+  "Power": "Secteur", "plugged in": "branché", "unplugged": "débranché", "Presence": "Présence", "off": "désactivée",
+  "camera unavailable": "caméra indisponible", "someone in front of the screen": "quelqu'un devant l'écran",
+  "nobody for {n} min": "personne depuis {n} min", "Up for": "Allumée depuis", "Data": "Données", "up to date": "à jour",
+  "{n} min ago": "il y a {n} min", "Failed: {e}": "Échec : {e}", "Cannot save: {e}": "Enregistrement impossible : {e}",
+  "data {n} min old": "données vieilles de {n} min", "Stale data": "Données périmées", "{n} alerts": "{n} alertes",
+  "1 alert": "1 alerte", "All good": "Tout va bien", "Hosts online": "Hôtes en ligne", "Services OK": "Services OK",
+  "Backups ({n} guests)": "Sauvegardes ({n} invités)", "{n} late": "{n} en retard", "Alerts": "Alertes",
+  "No alerts. Everything answers.": "Aucune alerte. Tout répond.", "no data": "aucune donnée", "down": "en panne",
+  "pending": "en attente", "maintenance": "maintenance", "{a}/{b} running": "{a}/{b} en marche",
+  "No container reports metrics.": "Aucun conteneur ne remonte de métriques.", "Fullest system disks": "Disques système les plus pleins",
+  "All under 60 %": "Tous sous 60 %", "Late: {list}": "En retard : {list}", "All PBS backups are under {h} h old": "Toutes les sauvegardes PBS ont moins de {h} h",
+  "Temperature": "Température", "Busiest ports (in + out)": "Ports les plus chargés (entrée + sortie)",
+  "admin of {name} (VLAN {v})": "admin de {name} (VLAN {v})", "to {name}": "vers {name}", "admin {a} ↔ {b} (VLAN {v})": "admin {a} ↔ {b} (VLAN {v})",
+  "Host": "Hôte", "Uptime Kuma service": "Service Uptime Kuma", "MikroTik switch": "Switch MikroTik", "Network port": "Port réseau",
+  "ZFS pool": "Pool ZFS", "PBS datastore": "Datastore PBS", "Docker container": "Conteneur Docker", "Loading…": "Chargement…",
+  "Data unavailable: {e}": "Données indisponibles : {e}", "online": "en ligne", "now": "maintenant",
+  "No data over the range.": "Aucune donnée sur la période.", "Delete": "Effacer", "Current admin code": "Code admin actuel",
+  "New admin code": "Nouveau code admin", "4 to 8 digits": "4 à 8 chiffres", "Type the new code again": "Retaper le nouveau code",
+  "The two codes differ": "Les deux codes diffèrent", "Admin code saved": "Code admin enregistré", "Restart {what}": "Redémarrer {what}",
+  "Type the admin code": "Tape le code admin", "Sending…": "Envoi…", "error {n}": "erreur {n}", "agent unreachable": "agent injoignable",
+  "▦ List": "▦ Liste", "◎ Rings": "◎ Anneaux", "◉ Bubbles": "◉ Bulles", "Memory": "Mémoire", "Disk": "Disque", "offline": "hors ligne",
+  "Others": "Autres", "Public": "Public", "Internal": "Interne", "Direct": "Direct", "stopped": "arrêté", "Memory {v}": "Mémoire {v}",
+  "Disk {v}": "Disque {v}", "↻ {n} in 24 h": "↻ {n} en 24 h", "← All": "← Tous", "{n} items": "{n} éléments", "1 item": "1 élément",
+  "{name} sheet": "Fiche de {name}", "hosts": "hôtes", "services": "services", "Internet": "Internet", "+ {n} more": "+ {n} autres",
+  "No alerts": "Aucune alerte", "VM": "VM", "Backups": "Sauvegardes", "{n} up to date": "{n} à jour",
+  "Topology unavailable: {e}": "Topologie indisponible : {e}", "Data": "Données", "Storage · direct links": "Stockage · liens directs",
+  "MSTP root {name}": "racine MSTP {name}", "admin link · {port}": "lien d'admin · {port}", "Cannot read the state: {e}": "Impossible de lire l'état : {e}",
+  // server: detail sheets
+  "Load": "Charge", "Disk I/O": "Disques (E/S)", "Cores": "Cœurs", "Total RAM": "RAM totale", "Processes": "Processus",
+  "Mount points": "Points de montage", "Status": "État", "Response time": "Temps de réponse", "Uptime over the range": "Disponibilité sur la période",
+  "Certificate valid for": "Certificat valable encore", "Temperatures": "Températures", "Switched traffic": "Trafic commuté",
+  "Ports now (in + out)": "Ports maintenant (entrée + sortie)", "Throughput": "Débit", "Inbound peak over the range": "Pointe d'entrée sur la période",
+  "Fill": "Remplissage", "Used": "Occupé", "Size": "Taille", "Free": "Libre", "Largest datasets": "Jeux de données les plus gros",
+  "Snapshots": "Instantanés", "Guests backed up": "Invités sauvegardés", "Oldest backups": "Sauvegardes les plus anciennes",
+  "Restarts (since created)": "Redémarrages (depuis la création)", "Memory limit": "Limite mémoire", "Average CPU": "CPU moyen du parc",
+  "in": "entrée", "out": "sortie", "read": "lecture", "write": "écriture", "tracked": "suivis", "chip": "puce",
+  "unknown name": "nom inconnu", "unknown kind or range": "kind ou range inconnu",
+  // server: alerts and restart answers
+  "{name} is not answering": "{name} ne répond plus", "{name}: down": "{name} : en panne", "{name}: pending": "{name} : en attente",
+  "{name}: disk at {v}": "{name} : disque à {v}", "{name} {v} full": "{name} rempli à {v}", "Switch {name} at {v} °C": "Switch {name} à {v} °C",
+  "{name} at {v} °C": "{name} à {v} °C", "Backup older than {h} h: {list}": "Sauvegarde de plus de {h} h : {list}",
+  "actions are for the rack screen only": "actions réservées à l'écran de la baie", "bad kind or name": "kind ou name invalide",
+  "a node is restarted from a desk, not from the screen": "un nœud se redémarre depuis le poste, pas depuis l'écran",
+  "{name} is protected": "{name} est protégé", "no Proxmox token": "jeton Proxmox absent", "{name} not found in Proxmox": "{name} introuvable dans Proxmox",
+  "{name} is restarting ({kind} {id} on {node})": "{name} redémarre ({kind} {id} sur {node})", "{host} takes no restarts": "{host} n'accepte pas les redémarrages",
+  "no SSH key": "clé SSH absente", "{ct} restarted on {host}": "{ct} redémarré sur {host}", "Proxmox refused ({e})": "Proxmox a refusé ({e})",
+  // kiosk agent
+  "no admin code: set one in Settings": "aucun code admin : le définir dans Réglages", "wrong code": "code incorrect",
+  "too many attempts, try again in {s} s": "trop d'essais, réessayer dans {s} s", "server unreachable ({e})": "serveur injoignable ({e})",
+};
+const FR_RE = Object.entries(FR).filter(([k]) => k.includes("{")).map(([k, val]) =>
+  [new RegExp("^" + k.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{(\w+)\}/g,
+    (_, x) => `(?<${x}>${/^(v|n|h|s|id)$/.test(x) ? "[^ ]+" : ".+?"})`) + "$"), val]);  // numbers have no spaces, names may
+let LANG = "en";
+// tr("Restart {what}", {what}) for the page's own strings; tr(serverMessage) for what the server sends.
+function tr(s, v = {}) {
+  let out = s;
+  if (LANG === "fr") {
+    if (FR[s]) out = FR[s];
+    else if (!Object.keys(v).length) for (const [re, val] of FR_RE) { const m = String(s).match(re); if (m) { v = m.groups; out = val; break; } }
+  }
+  return String(out).replace(/\{(\w+)\}/g, (_, x) => v[x] ?? "");
+}
+const PC = () => LANG === "fr" ? " %" : "%";
+const LOCALE = () => LANG === "fr" ? "fr-FR" : "en-GB";
+
+const slides = $("slides"), sections = [...slides.children], v = $("v"), home = $("home");
+let current = 0, lastTouch = 0, lastOk = 0, lastState = null, local = null, swallow = false, sheet = null, padDone = null;
+// This install (/api/config): title, modules on, WAN port, VLAN cards. Defaults until it answers.
+let conf = {title: "Rack Panel", modules: ["hostmetrics", "uptime_kuma", "mikrotik", "docker", "backups", "topology"],
+  wan: "", data_vlan: "", admin_vlan: "", vlans: []};
+// Screen settings live in the kiosk agent (rack-panel-kiosk) on the screen's machine; defaults when viewed elsewhere.
+let cfg = {slide_s: 20, idle_s: 120, slides: sections.map((s) => s.dataset.id)};
+
+// Vertical axis: settings above the carousel.
+const showHome = (smooth = true) => v.scrollTo({top: home.offsetTop, behavior: smooth ? "smooth" : "instant"});
+const onHome = () => Math.abs(v.scrollTop - home.offsetTop) < 10;
+const onMap = () => v.scrollTop >= $("map").offsetTop - 10;
+$("pull").addEventListener("click", () => v.scrollTo({top: 0, behavior: "smooth"}));
+$("close").addEventListener("click", () => showHome());
+
+// Carousel: native scroll-snap for the swipe, dots for a direct jump, hidden slides skipped.
+const visible = () => sections.filter((s) => !s.hidden);
+const go = (i) => slides.scrollTo({left: i * slides.clientWidth, behavior: "smooth"});
+function onScroll() {
+  current = Math.round(slides.scrollLeft / slides.clientWidth);
+  [...$("dots").children].forEach((b, i) => b.classList.toggle("on", i === current));
+}
+function layoutSlides() {
+  const want = sections.map((s) => !cfg.slides.includes(s.dataset.id) || (s.dataset.mod && !conf.modules.includes(s.dataset.mod)));
+  if (want.every((h, i) => h === sections[i].hidden) && $("dots").children.length && $("dots").dataset.lang === LANG) return;
+  $("dots").dataset.lang = LANG;
+  sections.forEach((s, i) => { s.hidden = want[i]; });
+  $("dots").innerHTML = visible().map((s, i) => `<button type="button" data-i="${i}">${esc(tr(s.dataset.title))}</button>`).join("");
+  onScroll();
+}
+$("dots").addEventListener("click", (e) => { if (e.target.dataset.i) go(+e.target.dataset.i); });
+$("status").addEventListener("click", () => go(Math.max(0, visible().findIndex((s) => s.dataset.id === "overview"))));
+slides.addEventListener("scroll", onScroll, {passive: true});
+// Any touch postpones the rotation; at night the first touch only wakes the screen.
+addEventListener("pointerdown", () => {
+  lastTouch = Date.now();
+  if (local && local.dim) {
+    local.dim = false; swallow = true; setTimeout(() => { swallow = false; }, 800);
+    api("/local/wake", {}).catch(() => {});
+  }
+}, {capture: true, passive: true});
+addEventListener("wheel", () => { lastTouch = Date.now(); }, {passive: true});
+addEventListener("click", (e) => { if (swallow) { swallow = false; e.stopPropagation(); e.preventDefault(); } }, true);
+(function tick() {
+  if (Date.now() - lastTouch > cfg.idle_s * 1000) {
+    if (padDone) padDone(null);
+    if (sheet) closeSheet();
+    else if (!onHome()) showHome(); else { unzoomAll(); if (visible().length > 1) go((current + 1) % visible().length); }
+  }
+  setTimeout(tick, cfg.slide_s * 1000);
+})();
+layoutSlides();
+showHome(false);
+addEventListener("resize", () => { if (onHome()) showHome(false); });
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {cache: "no-store"} :
+    {method: "POST", headers: {"Content-Type": "application/json", "X-Rack-Panel": "1"}, body: JSON.stringify(body)});
+  if (!r.ok) throw new Error(r.status);
+  return r.json();
+}
+
+// Settings screen: steppers and toggles only (no on-screen keyboard in the kiosk).
+const NUM = {brightness: [" %", 10], away_min: [" min", 1], motion_pct: [" %", 1], night_start: [" h", 1], night_end: [" h", 1], wake_min: [" min", 1],
+  slide_s: [" s", 5], idle_s: [" s", 30], disk: [" %", 1], temp: [" °C", 1], sw_temp: [" °C", 1], backup_h: [" h", 1]};
+const ACTS = {"restart-display": "Restart display", reboot: "Reboot device", poweroff: "Power off device"};
+const BAT = {Charging: "charging", Discharging: "on battery", "Not charging": "capped (battery limit)", Full: "full"};
+let armed = null, armTimer = null, saveTimer = null;
+const stp = (k, label) => `<div class="stp"><span>${tr(label)}</span><span class="ctl"><button type="button" data-k="${k}" data-d="-1">−</button>` +
+  `<output>${cfg[k] ?? "–"}${NUM[k][0]}</output><button type="button" data-k="${k}" data-d="1">+</button></span></div>`;
+const kv = (k, val) => `<div class="kv"><span>${tr(k)}</span><span>${esc(val ?? "–")}</span></div>`;
+const since = (sec) => sec >= 86400 ? `${Math.floor(sec / 86400)} ${LANG === "fr" ? "j" : "d"} ${Math.floor(sec % 86400 / 3600)} h` : `${Math.floor(sec / 3600)} h ${Math.floor(sec % 3600 / 60)} min`;
+
+function renderSettings() {
+  $("set-note").textContent = local ? (local.dim ? tr("Screen asleep") : "") : tr("Settings are available on the rack screen only");
+  [...$("langs").querySelectorAll("[data-lang]")].forEach((b) => b.classList.toggle("on", b.dataset.lang === LANG));
+  const onOff = (k) => `<button type="button" class="tog ${cfg[k] ? "on" : ""}" data-tog="${k}">${tr(cfg[k] ? "On" : "Off")}</button>`;
+  $("c-screen").innerHTML = `<h3>${tr("Screen")}</h3>${stp("brightness", "Brightness")}
+    <div class="stp"><span>${tr("Off at night")}</span>${onOff("night")}</div>
+    ${stp("night_start", "Night from")}${stp("night_end", "Until")}${stp("wake_min", "Wake on touch")}
+    <div class="stp"><span>${tr("Sleep when nobody is there (camera)")}</span>${onOff("presence")}</div>
+    ${stp("away_min", "After")}${stp("motion_pct", "Motion threshold")}`;
+  $("c-rotate").innerHTML = `<h3>${tr("Rotation")}</h3>${stp("slide_s", "Time per screen")}${stp("idle_s", "Pause after a touch")}
+    <div class="chips">${sections.filter((s) => !s.dataset.mod || conf.modules.includes(s.dataset.mod)).map((s) => `<button type="button" class="chip ${cfg.slides.includes(s.dataset.id) ? "on" : ""}" data-slide="${s.dataset.id}">${esc(tr(s.dataset.title))}</button>`).join("")}</div>`;
+  $("c-limits").innerHTML = `<h3>${tr("Alert thresholds")}</h3>${stp("disk", "Disk or pool full")}${stp("temp", "Host temperature")}${stp("sw_temp", "Switch temperature")}${stp("backup_h", "Backup late after")}`;
+  $("c-actions").innerHTML = `<h3>${tr("Device")}</h3>${Object.entries(ACTS).map(([a, label]) =>
+    `<button type="button" class="act c-${a} ${armed === a ? "arm" : ""}" data-act="${a}">${tr(armed === a ? "Touch again to confirm" : label)}</button>`).join("")}
+    <button type="button" class="act" data-code="1">${tr(local && local.admin && local.admin.set ? "Change the admin code" : "Set the admin code")}</button>`;
+  const sys = local ? local.system : {};
+  const age = lastOk ? Math.round((Date.now() - lastOk) / 1000) : null;
+  $("c-system").innerHTML = `<h3>${tr("System")}</h3>${kv("IP address", sys.ip)}${kv("Wi-Fi", sys.ssid ? `${sys.ssid} (${sys.signal})` : null)}
+    ${kv("Battery", sys.battery == null ? null : `${sys.battery}${PC()}, ${tr(BAT[sys.battery_status] || sys.battery_status || "")}`)}
+    ${kv("Power", sys.ac == null ? null : tr(sys.ac ? "plugged in" : "unplugged"))}
+    ${kv("Presence", !local || !local.presence ? null : !cfg.presence ? tr("off") : !local.presence.camera ? tr("camera unavailable") :
+      local.presence.seen_s < 60 ? tr("someone in front of the screen") : tr("nobody for {n} min", {n: Math.round(local.presence.seen_s / 60)}))}${kv("Up for", sys.uptime ? since(sys.uptime) : null)}
+    ${kv("rack-panel", lastState ? lastState.version : null)}${kv("Data", age == null ? null : age < 60 ? tr("up to date") : tr("{n} min ago", {n: Math.round(age / 60)}))}`;
+}
+
+$("settings").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b || !local) return;
+  if (b.dataset.k) {
+    const k = b.dataset.k;
+    cfg[k] = k.startsWith("night_") ? (cfg[k] + +b.dataset.d + 24) % 24 : cfg[k] + b.dataset.d * NUM[k][1];
+  } else if (b.dataset.tog) {
+    cfg[b.dataset.tog] = !cfg[b.dataset.tog];
+  } else if (b.dataset.slide) {
+    const id = b.dataset.slide;
+    cfg.slides = cfg.slides.includes(id) ? cfg.slides.filter((x) => x !== id) : [...cfg.slides, id];
+  } else if (b.dataset.code) {
+    return setCode();
+  } else if (b.dataset.act) {
+    const a = b.dataset.act;
+    clearTimeout(armTimer);
+    if (armed === a) {
+      armed = null;
+      api("/local/action", {action: a}).then(() => { $("set-note").textContent = tr(ACTS[a]) + "…"; })
+        .catch((err) => { $("set-note").textContent = tr("Failed: {e}", {e: err.message}); });
+    } else {
+      armed = a; armTimer = setTimeout(() => { armed = null; renderSettings(); }, 4000);
+    }
+    return renderSettings();
+  } else return;
+  renderSettings();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    saveTimer = null;
+    try {
+      const r = await api("/local/settings", cfg);
+      cfg = r.settings; local.settings = r.settings; local.dim = r.dim;
+      layoutSlides(); renderSettings(); poll();
+    } catch (err) { $("set-note").textContent = tr("Cannot save: {e}", {e: err.message}); }
+  }, 400);
+});
+
+async function pollLocal() {
+  try {
+    local = await api("/local/status");
+    if (!saveTimer) cfg = local.settings;  // don't overwrite a change being saved
+    setLang();
+    // Rings or bubbles per screen live in the kiosk's settings (the kiosk browser forgets on restart).
+    const v = local.settings.views || {};
+    if (Date.now() - viewAt > 5000 && JSON.stringify(v) !== JSON.stringify(views)) { views = {...v}; if (lastState) render(lastState); }
+    $("settings").classList.remove("off");
+  } catch { local = null; $("settings").classList.add("off"); }
+  layoutSlides(); renderSettings();
+}
+// System info refreshes every 5 s while Réglages is open, every 30 s otherwise.
+let lastLocal = 0;
+setInterval(() => {
+  if (!onHome() || Date.now() - lastLocal > 30000) { lastLocal = Date.now(); pollLocal(); }
+}, 5000);
+lastLocal = Date.now(); pollLocal();
+
+function clock() {
+  $("clock").textContent = new Date().toLocaleTimeString(LOCALE(), {hour: "2-digit", minute: "2-digit"});
+  const age = lastOk ? Math.round((Date.now() - lastOk) / 1000) : null;
+  $("age").textContent = age == null ? "" : age < 60 ? tr("up to date") : tr("data {n} min old", {n: Math.round(age / 60)});
+  if (age != null && age > 90) { $("status").className = "stale"; $("status").textContent = tr("Stale data"); }
+}
+setInterval(clock, 1000);
+
+function render(s) {
+  const up = s.hosts.filter((h) => h.up).length, svcUp = s.services.filter((x) => x.status === 1).length;
+  $("status").className = s.alerts.length ? "bad" : "";
+  $("status").textContent = s.alerts.length ? (s.alerts.length > 1 ? tr("{n} alerts", {n: s.alerts.length}) : tr("1 alert")) : tr("All good");
+
+  const pbs = s.storage.find((x) => x.name.startsWith("PBS"));
+  $("s-overview").innerHTML = `
+    <div class="grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="card" ${tap("fleet", "all")}><div class="label">${tr("Hosts online")}</div><div class="big ${up === s.hosts.length ? "ok" : "bad"}">${up}/${s.hosts.length}</div></div>
+      <div class="card" ${tap("fleet", "all")}><div class="label">${tr("Services OK")}</div><div class="big ${svcUp === s.services.length ? "ok" : "bad"}">${svcUp}/${s.services.length}</div></div>
+      <div class="card" ${WAN() ? tap("port", WAN()) : ""}><div class="label">Internet ↓ / ↑</div><div class="big" style="font-size:30px;padding-top:8px">${mbits(s.wan.rx)}<br>${mbits(s.wan.tx)}</div></div>
+      <div class="card" ${pbs ? tap("pbs", pbs.name) : ""}><div class="label">${tr("Backups ({n} guests)", {n: s.backups.count})}</div>
+        <div class="big ${s.backups.stale.length ? "bad" : "ok"}">${s.backups.stale.length ? tr("{n} late", {n: s.backups.stale.length}) : "OK"}</div>
+        ${pbs ? `<div class="label">PBS ${pct(pbs.used / pbs.size)}</div>` : ""}</div>
+    </div>
+    <h2 style="margin-top:22px">${tr("Alerts")}</h2>
+    ${s.alerts.length ? `<ul class="alerts">${s.alerts.map((a) => `<li>${esc(tr(a))}</li>`).join("")}</ul>` : `<div class="calm">${tr("No alerts. Everything answers.")}</div>`}`;
+
+  const byName = Object.fromEntries(s.hosts.map((h) => [h.name, h]));
+  $("s-nodes").innerHTML = `<div class="rings" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">${s.nodes.map((n) =>
+    byName[n] ? cell(hostItem(byName[n]), 150, "big") : `<div class="card rg big down"><div class="rg-t"><b>${esc(n)}</b><span>${tr("no data")}</span></div></div>`).join("")}</div>`;
+
+  const vms = s.hosts.filter((h) => h.vm);
+  if (show("hosts", vms.length)) packView("hosts", vmGroups(vms));
+  else $("s-hosts").innerHTML = `<div class="rings" style="grid-template-columns:repeat(5,minmax(0,1fr));gap:6px">${vms.map((h) => cell(hostItem(h), 54, "tight")).join("")}</div>`;
+
+  const label = {0: tr("down"), 2: tr("pending"), 3: tr("maintenance")};
+  if (show("services", s.services.length)) packView("services", svcGroups(s.services));
+  else $("s-services").innerHTML = `<div class="grid" style="grid-template-columns:repeat(3,1fr);gap:8px">${s.services.map((x) =>
+    `<div class="card svc" ${tap("service", x.name)}><i class="dot s${x.status}"></i>${esc(x.name)}<em>${x.status === 1 ? (x.ms == null ? "" : Math.round(x.ms) + " ms") : label[x.status] || ""}</em></div>`).join("")}</div>`;
+
+  if (show("docker", s.containers.length)) packView("docker", ctGroups(s.containers));
+  else $("s-docker").innerHTML = s.containers.length ? ctGroups(s.containers).map((g) =>
+    `<div class="card" style="padding:10px 12px;margin-bottom:10px"><div class="row" ${g.d ? `data-d="${esc(g.d)}"` : ""}><b style="font-size:17px">${esc(g.name)}</b><span class="label">${tr("{a}/{b} running", {a: g.items.filter((i) => i.c.up).length, b: g.items.length})}</span></div>
+      <div class="rings" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px">${g.items.map((i) => cell(i, 40, "", false)).join("")}</div></div>`).join("")
+    : `<div class="empty">${tr("No container reports metrics.")}</div>`;
+
+  const disks = s.hosts.filter((h) => (h.disk || 0) >= 0.6).sort((a, b) => b.disk - a.disk);
+  $("s-storage").innerHTML = `<div class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card">${s.storage.map((p) => `<div ${tap(p.name.startsWith("PBS ") ? "pbs" : "pool", p.name)}><div class="row"><b>${esc(p.name)}</b><span class="label">${bytes(p.used)} / ${bytes(p.size)} · ${pct(p.used / p.size)}</span></div>${bar(p.used / p.size, 0.75, 0.85)}</div>`).join("")}</div>
+    <div class="card"><div class="label" style="margin-bottom:8px">${tr("Fullest system disks")}</div>
+      ${disks.length ? disks.map((h) => `<div ${tap("host", h.name)}><div class="row"><b>${esc(h.name)}</b><span class="label">${pct(h.disk)}</span></div>${bar(h.disk, 0.75, 0.85)}</div>`).join("") : `<div class="calm" style="font-size:18px">${tr("All under 60 %")}</div>`}
+      <div class="label" style="margin-top:10px">${s.backups.stale.length ? tr("Late: {list}", {list: esc(s.backups.stale.join(", "))}) : tr("All PBS backups are under {h} h old", {h: s.limits.backup_h})}</div></div></div>`;
+
+  tweenArcs(slides);
+  renderZones(s);
+  if (mapView === "topo" && topo) paintTopo();
+  $("s-network").innerHTML = `<div class="grid" style="grid-template-columns:1fr 2fr">
+    <div class="card" ${WAN() ? tap("port", WAN()) : ""}><div class="label">Internet (${esc(WAN())})</div><div class="big" style="font-size:34px">↓ ${mbits(s.wan.rx)}</div><div class="big" style="font-size:34px">↑ ${mbits(s.wan.tx)}</div></div>
+    <div class="grid" style="grid-template-columns:repeat(${Math.max(1, s.switches.length)},1fr)">${s.switches.map((w) =>
+      `<div class="card" ${tap("switch", w.name)}><b style="font-size:20px">${esc(w.name)}</b><div class="label">${esc(w.model || "")}</div>
+        <div class="row label" style="margin-top:8px"><span>CPU</span><span>${Math.round(w.cpu)} %</span></div>${bar(w.cpu / 100)}
+        <div class="row label"><span>${tr("Temperature")}</span><span class="${level(w.temp, 65, 75)}">${w.temp == null ? "–" : Math.round(w.temp) + " °C"}</span></div></div>`).join("")}</div>
+  </div>
+  <div class="card" style="margin-top:12px"><div class="label" style="margin-bottom:8px">${tr("Busiest ports (in + out)")}</div>
+    ${s.links.map((l) => `<div ${tap("port", l.name)}><div class="row"><b>${esc(l.name)}</b><span>${mbits(l.bps / 1e6)}</span></div>${bar(l.bps / 1e9)}</div>`).join("")}</div>`;
+}
+
+// ---- Lot 2: detail sheets. Hand-drawn SVG, one fetch per refresh, CSS-only motion (i3 + 4 GB). ----
+const WAN = () => conf.wan;
+const tap = (kind, name) => `data-d="${esc(kind + "|" + name)}"`;
+// What a switch port carries, from the topology (known once the map has been opened).
+function portWhat(port) {
+  const t = topo;
+  if (!t) return "";
+  const m = t.machines.find((x) => x.admin && x.admin.join(" ") === port);
+  if (m) return tr("admin of {name} (VLAN {v})", {name: m.name, v: conf.admin_vlan});
+  const d = t.machines.find((x) => x.port && `${x.parent} ${x.port}` === port);
+  if (d) return d.name;
+  if (t.wan && `${t.wan.via} ${t.wan.port}` === port) return t.wan.name[0].toUpperCase() + t.wan.name.slice(1);
+  const g = t.gear.find((x) => x.port && `${x.parent} ${x.port}` === port);
+  if (g) return tr("to {name}", {name: g.name});
+  const l = (t.spare || []).find((x) => x.port === port);
+  return l ? tr("admin {a} ↔ {b} (VLAN {v})", {a: l.a, b: l.b, v: conf.admin_vlan}) : "";
+}
+const KINDS = {host: "Host", service: "Uptime Kuma service", switch: "MikroTik switch", port: "Network port",
+  pool: "ZFS pool", pbs: "PBS datastore", container: "Docker container", fleet: "Overview"};
+const COLORS = ["#5aa9ff", "#f2b134", "#34c77b", "#c58cff"];
+const STATUS = {0: ["down", "#f0524f"], 1: ["online", "#34c77b"], 2: ["pending", "#f2b134"], 3: ["maintenance", "#5aa9ff"]};
+const fmt = (v, u) => v == null ? "–" : u === "pct" ? (v < 0.1 && v > 0 ? (v * 100).toFixed(1) : Math.round(v * 100)) + PC()
+  : u === "bytes" ? bytes(v) : u === "Bps" ? bytes(v) + "/s" : u === "bps" ? (v < 1e6 ? Math.round(v / 1e3) + " kbit/s" : mbits(v / 1e6))
+  : u === "ms" ? Math.round(v) + " ms" : u === "c" ? Math.round(v) + " °C" : u === "num" ? v.toFixed(2)
+  : u === "s" ? since(v) : u === "days" ? Math.round(v) + (LANG === "fr" ? " j" : " d") : u === "status" ? tr((STATUS[v] || ["?"])[0]) : String(Math.round(v));
+let sheetTimer = null, sheetToken = 0, prevVals = {};
+
+function openSheet(kind, name) {
+  sheet = {kind, name, range: "1h"}; prevVals = {};
+  $("sh-kind").textContent = tr(KINDS[kind] || kind) + (kind === "port" && portWhat(name) ? " · " + portWhat(name) : "");
+  $("sh-title").textContent = kind === "fleet" ? tr("Overview") : name;
+  $("sh-body").innerHTML = `<div class="empty">${tr("Loading…")}</div>`;
+  $("sh-desc").textContent = "";
+  const h = kind === "host" && lastState ? lastState.hosts.find((x) => x.name === name) : null;
+  // VM/LXC and containers only (restart module on); nodes are restarted from the desk, only the kiosk holds the code.
+  $("sh-restart").hidden = !local || !conf.modules.includes("restart") || !(kind === "container" || (h && h.vm));
+  disarmRestart();
+  $("sheet").hidden = false;
+  loadSheet(true);
+}
+function closeSheet() {
+  if (padDone) padDone(null);
+  sheet = null; sheetToken++; clearTimeout(sheetTimer); $("sheet").hidden = true;
+}
+async function loadSheet(animate) {
+  clearTimeout(sheetTimer);
+  const token = ++sheetToken, sh = sheet;
+  [...$("sh-ranges").children].forEach((b) => b.classList.toggle("on", b.dataset.r === sh.range));
+  try {
+    const r = await fetch(`/api/detail?kind=${encodeURIComponent(sh.kind)}&name=${encodeURIComponent(sh.name)}&range=${sh.range}`, {cache: "no-store"});
+    const d = await r.json();
+    if (token !== sheetToken) return;
+    if (!r.ok) throw new Error(d.error || r.status);
+    renderSheet(d, animate);
+  } catch (e) {
+    if (token !== sheetToken) return;
+    $("sh-body").innerHTML = `<div class="empty">${esc(tr("Data unavailable: {e}", {e: tr(e.message)}))}</div>`;
+  }
+  // 1 h = 30 s steps, refreshed often enough to see the curve move; longer ranges move slowly.
+  if (token === sheetToken) sheetTimer = setTimeout(() => loadSheet(false), sh.range === "1h" ? 15000 : 60000);
+}
+
+function plot(c, d) {
+  const W = 1000, H = 100, x0 = d.start, x1 = d.end, gap = d.step * 2.5;
+  const vals = c.series.flatMap((s) => s.points.map((p) => p[1]));
+  const X = (t) => ((t - x0) / (x1 - x0)) * W;
+  if (c.unit === "status") {
+    const w = (d.step / (x1 - x0)) * W + 0.5;
+    return {svg: c.series[0].points.map(([t, v]) =>
+      `<rect x="${X(t).toFixed(1)}" y="20" width="${w.toFixed(1)}" height="60" fill="${(STATUS[v] || ["", "#8592a6"])[1]}"/>`).join(""), dots: ""};
+  }
+  let lo = c.unit === "c" ? Math.floor(Math.min(...vals) - 3) : 0, hi = Math.max(...vals);
+  hi = hi <= lo ? lo + 1 : lo + (hi - lo) * 1.12;
+  if (c.unit === "pct") hi = Math.min(1, Math.max(hi, 0.05));
+  const Y = (v) => H - ((v - lo) / (hi - lo)) * H;
+  let svg = "", dots = "";
+  c.series.forEach((s, i) => {
+    let path = "", prev = null;
+    for (const [t, v] of s.points) {
+      path += `${prev == null || t - prev > gap ? "M" : "L"}${X(t).toFixed(1)} ${Y(v).toFixed(1)}`;
+      prev = t;
+    }
+    const col = COLORS[i % COLORS.length], first = s.points[0], last = s.points[s.points.length - 1];
+    if (i === 0 && !path.slice(1).includes("M"))
+      svg += `<path class="area" d="${path}L${X(last[0]).toFixed(1)} ${H}L${X(first[0]).toFixed(1)} ${H}Z" fill="${col}" fill-opacity=".12"/>`;
+    svg += `<path d="${path}" stroke="${col}"/>`;
+    if (x1 - last[0] <= gap) dots += `<span class="live" style="left:${X(last[0]) / 10}%;top:${Y(last[1])}%;background:${col}"></span>`;
+  });
+  return {svg, dots, hi, lo};
+}
+
+const tw = (key, v, u) => `<b data-k="${esc(key)}" data-v="${v}" data-u="${u}">${fmt(prevVals[key] ?? 0, u)}</b>`;
+function renderSheet(d, animate) {
+  $("sh-desc").textContent = d.description || "";
+  const many = d.charts.length > 4, hhmm = (ts) => new Date(ts * 1000).toLocaleString(LOCALE(),
+    d.range === "7d" || d.range === "24h" ? {weekday: "short", hour: "2-digit", minute: "2-digit"} : {hour: "2-digit", minute: "2-digit"});
+  $("sh-body").style.gridTemplateColumns = `repeat(${many ? 3 : 2}, 1fr)`;
+  let html = d.facts.length ? `<div class="facts">${d.facts.map((f, i) =>
+    `<div class="card"><div class="label">${esc(tr(f.label))}</div>${tw("f" + i, f.value, f.unit)}</div>`).join("")}</div>` : "";
+  html += d.charts.map((c) => {
+    const p = plot(c, d), lastV = (s) => s.points[s.points.length - 1][1];
+    const cur = c.unit === "status" ? `<b style="color:${(STATUS[lastV(c.series[0])] || ["", ""])[1]}">${fmt(lastV(c.series[0]), "status")}</b>`
+      : c.series.map((s, i) => `<span>${c.series.length > 1 ? `<small><i class="sw" style="background:${COLORS[i % 4]}"></i>${esc(tr(s.label))}</small>` : ""}${tw(c.id + i, lastV(s), c.unit)}</span>`).join("");
+    return `<div class="card ch"><div class="label">${esc(tr(c.title))}</div><div class="cur ${c.series.length > 1 ? "multi" : ""}">${cur}</div>
+      <div class="plot ${animate ? "draw" : ""}"><svg viewBox="0 0 1000 100" preserveAspectRatio="none">${p.svg}</svg>${p.dots}
+        ${p.hi == null ? "" : `<span class="ax hi">${fmt(p.hi, c.unit)}</span><span class="ax lo">${fmt(p.lo, c.unit)}</span>`}</div>
+      <div class="row label xs"><span>${hhmm(d.start)}</span><span>${tr("now")}</span></div></div>`;
+  }).join("");
+  if (d.bars && d.bars.items.length) {
+    const top = Math.max(...d.bars.items.map((b) => b.value)) || 1;
+    html += `<div class="card bars"><div class="label" style="margin-bottom:6px">${esc(tr(d.bars.title))}</div>
+      <div style="columns:2;column-gap:24px">${d.bars.items.map((b) => `<div style="break-inside:avoid"><div class="row"><span>${esc(b.label)}</span><span class="label">${fmt(b.value, d.bars.unit)}</span></div>
+      <div class="bar"><i class="${d.bars.unit === "pct" ? level(b.value, 0.75, 0.85) : ""}" style="width:${(d.bars.unit === "pct" ? b.value : b.value / top) * 100}%"></i></div></div>`).join("")}</div></div>`;
+  }
+  if (!d.charts.length && !d.facts.length) html = `<div class="empty">${tr("No data over the range.")}</div>`;
+  $("sh-body").innerHTML = html;
+  tween();
+}
+// Count each value up from its previous one (0 at first open), ~0.7 s, one rAF loop for all.
+function tween() {
+  const els = [...$("sh-body").querySelectorAll("b[data-k]")].map((el) => {
+    const k = el.dataset.k, to = +el.dataset.v, from = prevVals[k] ?? 0;
+    prevVals[k] = to;
+    return {el, from, to, u: el.dataset.u};
+  }).filter((x) => x.from !== x.to);
+  const t0 = performance.now();
+  (function step(now) {
+    const p = Math.min(1, (now - t0) / 700), e = 1 - (1 - p) ** 3;
+    for (const x of els) x.el.textContent = fmt(p === 1 ? x.to : x.from + (x.to - x.from) * e, x.u);
+    if (p < 1 && els.length) requestAnimationFrame(step);
+  })(t0);
+}
+
+function onTap(e) {
+  const t = e.target.closest("[data-d]");
+  if (!t || swallow) return;
+  const [kind, ...rest] = t.dataset.d.split("|");
+  openSheet(kind, rest.join("|"));
+}
+$("slides").addEventListener("click", onTap);
+$("map").addEventListener("click", onTap);
+$("sh-close").addEventListener("click", closeSheet);
+
+// ---- Restart: admin code keypad. The code is checked by the kiosk agent, never by the page. ----
+let padCode = "", restartArmed = false, restartTimer = null;
+$("pad-keys").innerHTML = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-n="${n}">${n}</button>`).join("") +
+  `<button type="button" data-n="del" aria-label="Delete">⌫</button><button type="button" data-n="0">0</button><button type="button" class="ok" data-n="ok">OK</button>`;
+function padDraw() {
+  $("pad-dots").innerHTML = Array.from({length: Math.max(4, padCode.length)}, (_, i) => `<i class="${i < padCode.length ? "on" : ""}"></i>`).join("");
+  $("pad-keys").querySelector(".ok").disabled = padCode.length < 4;
+}
+function padMsg(text, cls = "") { $("pad-msg").textContent = text; $("pad-msg").className = cls; }
+// Resolves with the digits typed (4 to 8), or null on Annuler, sheet closed or rotation timeout.
+function askCode(title, msg = "", cls = "") {
+  if (padDone) padDone(null);
+  padCode = ""; $("pad-title").textContent = title; padMsg(msg, cls); padDraw(); $("pad").hidden = false;
+  return new Promise((res) => { padDone = (v) => { padDone = null; $("pad").hidden = true; res(v); }; });
+}
+$("pad-keys").addEventListener("click", (e) => {
+  const n = e.target.dataset.n;
+  if (!n || !padDone) return;
+  if (n === "ok") { if (padCode.length >= 4) padDone(padCode); return; }
+  padCode = n === "del" ? padCode.slice(0, -1) : (padCode + n).slice(0, 8);
+  padDraw();
+});
+$("pad-cancel").addEventListener("click", () => { if (padDone) padDone(null); });
+// POST that keeps the server's message (api() only keeps the status).
+async function post(path, body) {
+  try {
+    const r = await fetch(path, {method: "POST", headers: {"Content-Type": "application/json", "X-Rack-Panel": "1"}, body: JSON.stringify(body)});
+    const d = await r.json().catch(() => ({}));
+    return r.ok ? d : {error: d.error || tr("error {n}", {n: r.status})};
+  } catch (e) { return {error: "agent unreachable"}; }
+}
+async function setCode() {
+  const isSet = !!(local && local.admin && local.admin.set);
+  let msg = "";
+  for (;;) {
+    const old = isSet ? await askCode(tr("Current admin code"), msg, msg ? "bad" : "") : "";
+    if (old === null) return;
+    const neu = await askCode(tr("New admin code"), !isSet && msg ? msg : tr("4 to 8 digits"), !isSet && msg ? "bad" : "");
+    if (neu === null) return;
+    const again = await askCode(tr("Type the new code again"));
+    if (again === null) return;
+    if (again !== neu) { msg = tr("The two codes differ"); continue; }
+    const r = await post("/local/code", {old, new: neu});
+    if (!r.error) { $("set-note").textContent = tr("Admin code saved"); return pollLocal(); }
+    msg = tr(r.error);
+  }
+}
+function disarmRestart() {
+  clearTimeout(restartTimer); restartArmed = false;
+  $("sh-restart").classList.remove("arm"); $("sh-restart").textContent = tr("Restart");
+}
+$("sh-restart").addEventListener("click", async () => {
+  if (!sheet) return;
+  const b = $("sh-restart"), {kind, name} = sheet;
+  if (!restartArmed) {  // first touch arms, like the device actions
+    restartArmed = true; b.classList.add("arm"); b.textContent = tr("Touch again to confirm");
+    restartTimer = setTimeout(disarmRestart, 4000);
+    return;
+  }
+  disarmRestart();
+  const [host, ...ct] = name.split(" ");
+  const what = kind === "container" ? `${ct.join(" ")} (${host})` : name;
+  let msg = tr("Type the admin code"), cls = "";
+  for (;;) {
+    const code = await askCode(tr("Restart {what}", {what}), msg, cls);
+    if (code === null) return;
+    askCode(tr("Restart {what}", {what}), tr("Sending…"));
+    const r = await post("/local/restart", {kind, name, code});
+    if (!r.error) { padMsg(tr(r.message), "ok"); setTimeout(() => { if (padDone) padDone(null); }, 3000); return; }
+    msg = tr(r.error); cls = "bad";
+    if (r.error !== "wrong code") { padMsg(msg, "bad"); setTimeout(() => { if (padDone) padDone(null); }, 6000); return; }
+  }
+});
+$("sh-ranges").addEventListener("click", (e) => {
+  if (!e.target.dataset.r || !sheet) return;
+  sheet.range = e.target.dataset.r; prevVals = {}; loadSheet(true);
+});
+// Horizontal swipe closes the sheet (vertical stays native scroll).
+let swipe = null;
+$("sheet").addEventListener("pointerdown", (e) => { swipe = [e.clientX, e.clientY]; }, {passive: true});
+$("sheet").addEventListener("pointerup", (e) => {
+  if (swipe && Math.abs(e.clientX - swipe[0]) > 120 && Math.abs(e.clientY - swipe[1]) < 80) closeSheet();
+  swipe = null;
+}, {passive: true});
+
+// ---- Circle view: busy screens as nested circles, group > element, colour = state, tap = sheet. ----
+const PACK_AUTO = 30;  // more elements than this: circles unless the screen was switched by hand
+let views = {}, viewAt = 0;
+try { views = JSON.parse(localStorage.getItem("rp-views")) || {}; } catch { /* private window: auto only */ }
+const show = (id, n) => {
+  const circles = (views[id] || (n > PACK_AUTO ? "circles" : "tiles")) === "circles";
+  const b = document.querySelector(`[data-vt="${id}"]`);
+  if (b) b.textContent = tr(circles ? (id === "services" ? "▦ List" : "◎ Rings") : "◉ Bubbles");
+  if (!circles) $("s-" + id).className = "";
+  return circles;
+};
+$("slides").addEventListener("click", (e) => {
+  const z = e.target.closest("[data-zoom]");
+  if (z && lastState) {  // a bubble group (or the back button) zooms in or out
+    zoomed[z.dataset.zoom] = z.dataset.g || null; packSig[z.dataset.zoom] = ""; return render(lastState);
+  }
+  const b = e.target.closest("[data-vt]");
+  if (!b || !lastState) return;
+  zoomed[b.dataset.vt] = null;
+  const id = b.dataset.vt;
+  views[id] = $("s-" + id).classList.contains("pk") ? "tiles" : "circles";
+  try { localStorage.setItem("rp-views", JSON.stringify(views)); } catch { /* not kept */ }
+  viewAt = Date.now(); cfg.views = {...views};  // a settings save in flight must not bring the old layout back
+  if (local) api("/local/settings", {views}).then((r) => { local.settings = r.settings; if (!saveTimer) cfg = r.settings; }).catch(() => {});
+  packSig[id] = ""; render(lastState);
+});
+const hostLv = (h) => hostLevel(h) === "na" ? "bad" : hostLevel(h);
+// One fixed colour per measure, everywhere (legend in the screen title). An arc past its alert level turns red.
+const MET = {cpu: ["CPU", "#5aa9ff"], mem: ["Memory", "#c58cff"], disk: ["Disk", "#f5a524"]};
+function legends() {
+  document.querySelectorAll("[data-lg]").forEach((el) => {
+    el.innerHTML = el.dataset.lg.split(" ").map((k) => `<span><i style="background:${MET[k][1]}"></i>${tr(MET[k][0])}</span>`).join("");
+  });
+}
+legends();
+const rate = (b) => b == null ? "–" : b < 1024 ? Math.round(b) + (LANG === "fr" ? " o/s" : " B/s") : bytes(b) + "/s";
+function hostItem(h) {
+  const disk = ((lastState || {}).limits || {}).disk || 85;
+  return {key: h.name, label: h.name, lv: hostLv(h), d: `host|${h.name}`, sub: h.up ? pct(h.cpu) : tr("offline"),
+    arcs: h.up ? [["cpu", h.cpu, 0.9], ["mem", h.mem, 0.92], ["disk", h.disk, disk / 100]] : [],
+    pills: h.up ? [["CPU " + pct(h.cpu), "cpu"], [tr("Memory {v}", {v: pct(h.mem)}), "mem"], [tr("Disk {v}", {v: pct(h.disk)}), "disk"],
+      ["↓ " + rate(h.rx)], ["↑ " + rate(h.tx)], ...(h.temp == null ? [] : [[Math.round(h.temp) + " °C"]])] : [[tr("offline")]]};
+}
+// Concentric arcs around a state dot; length = value. Size in px, drawn in a 48-unit box.
+function gauge(it, size) {
+  const R = [12, 15.5, 19];
+  return `<svg class="gauge" width="${size}" height="${size}" viewBox="0 0 48 48">${(it.arcs || []).map(([k, v, red], i) =>
+    `<circle class="trk" cx="24" cy="24" r="${R[i]}"/>` + (v > 0.004 ? `<circle class="arc" data-a="${esc(it.d + "|" + k)}" cx="24" cy="24" r="${R[i]}" pathLength="100"` +
+      ` stroke="${v >= red ? "var(--bad)" : MET[k][1]}" style="stroke-dasharray:${Math.min(99.9, v * 100).toFixed(1)} 100" transform="rotate(-90 24 24)"/>` : "")).join("")}` +
+    `<circle class="core lvf-${it.lv}" cx="24" cy="24" r="8"/>${it.lv === "bad" ? `<circle class="alarm" cx="24" cy="24" r="8"/>` : ""}</svg>`;
+}
+const cell = (it, size, cls = "", card = true) => `<div class="${card ? "card " : ""}rg ${cls} ${it.lv === "bad" && card ? "down" : ""}" data-d="${esc(it.d)}">${gauge(it, size)}` +
+  `<div class="rg-t"><b>${esc(it.full || it.label)}</b>${it.pills.map(([t, k]) => `<span ${k ? `style="border-color:${MET[k][1]}"` : ""}>${esc(t)}</span>`).join("")}</div></div>`;
+// Arcs glide from their previous value at each poll (from 0 the first time): the screens are rebuilt
+// from scratch, so the last length of each arc is kept by element and measure. Web Animations, not a CSS
+// transition: Chromium starts no transition on a freshly inserted element (no "before" style yet).
+const arcPrev = {};
+function tweenArcs(root) {
+  root.querySelectorAll(".arc[data-a]").forEach((el) => {
+    const to = el.style.strokeDasharray, from = arcPrev[el.dataset.a] || "0 100";
+    arcPrev[el.dataset.a] = to;
+    if (from !== to) el.animate([{strokeDasharray: from}, {strokeDasharray: to}], {duration: 900, easing: "ease-out"});
+  });
+}
+var zoomed = {};  // screen id -> bubble group shown full screen (var: the rotation tick runs before this line)
+function unzoomAll() {
+  if (zoomed && Object.values(zoomed).some(Boolean)) { zoomed = {}; if (lastState) render(lastState); }
+}
+function vmGroups(vms) {
+  // Proxmox node of each guest, from Cairn Map (the topology); re-read every 5 min.
+  if (!topo || Date.now() - topoAt > 300000) loadTopo();
+  const node = {}, by = {};
+  (topo ? topo.machines : []).forEach((m) => m.guests.forEach((g) => { node[g.toUpperCase()] = m.name; }));
+  vms.forEach((h) => { const n = node[h.name] || tr("Others"); (by[n] = by[n] || []).push(h); });
+  return Object.keys(by).sort().map((n) => ({name: n, d: lastState && lastState.hosts.some((h) => h.name === n) ? `host|${n}` : "",
+    items: by[n].map(hostItem)}));
+}
+function svcGroups(svcs) {
+  const lv = {0: "bad", 1: "ok", 2: "warn", 3: "info"}, by = {};
+  svcs.forEach((x) => (by[x.zone] = by[x.zone] || []).push(x));
+  return ["Public", "Internal", "Direct"].filter((z) => by[z]).map((z) => ({name: tr(z), d: "",
+    items: by[z].map((x) => ({key: x.name, label: x.name.split(/ [(—]/)[0], full: x.name, sub: x.status === 1 ? (x.ms == null ? "" : Math.round(x.ms) + " ms") : "",
+      lv: lv[x.status] || "info", d: `service|${x.name}`, arcs: [],
+      pills: [[x.status === 1 ? (x.ms == null ? tr("online") : Math.round(x.ms) + " ms") : tr(({0: "down", 2: "pending", 3: "maintenance"})[x.status] || "?")]]}))}));
+}
+const stack = (n) => (n.match(/^[^-_]+[-_]/) || [""])[0];
+const short = (n, all) => {
+  const p = stack(n), cut = p && all.filter((c) => stack(c.name) === p).length > 1 && n.length > p.length ? n.slice(p.length) : n;
+  return cut.replace(/[-_]1$/, "");
+};
+function ctGroups(cts) {
+  const by = {};
+  cts.forEach((c) => (by[c.host] = by[c.host] || []).push(c));
+  return Object.keys(by).sort().map((h) => ({name: h, d: lastState && lastState.hosts.some((x) => x.name === h) ? `host|${h}` : "",
+    items: by[h].map((c) => ({key: c.name, c, d: `container|${h} ${c.name}`,
+      // Stack prefix shared in the group and replica suffix dropped inside the circle (app-redis-1 -> redis);
+      // the sheet has the full name.
+      label: short(c.name, by[h]), full: c.name,
+      sub: c.up ? pct(c.cpu) : tr("stopped"),
+      arcs: c.up ? [["cpu", c.cpu, 0.9], ["mem", c.memp, 0.9]] : [],
+      pills: c.up ? [["CPU " + pct(c.cpu), "cpu"], [tr("Memory {v}", {v: c.mem == null ? "–" : bytes(c.mem)}), "mem"],
+        ...(c.restarts ? [[tr("↻ {n} in 24 h", {n: c.restarts})]] : [])] : [[tr("stopped")]],
+      lv: !c.up ? "bad" : (c.restarts || 0) > 0 || (c.cpu || 0) >= 0.9 || (c.memp || 0) >= 0.9 ? "warn" : "ok"}))}));
+}
+// Front-chain style packing: each circle goes tangent to two placed ones, as close to the centre as
+// possible. The x axis counts `wide` times less, so the blob fills the landscape screen.
+// ponytail: O(n³) per group, fine for the ~20-element groups here; d3-hierarchy's packSiblings if it grows.
+function pack(radii, wide = 1) {
+  const out = [];
+  for (const r of radii) {
+    let best = null;
+    const at = (x, y) => {
+      if (out.some((c) => Math.hypot(c.x - x, c.y - y) < c.r + r - 1e-6)) return;
+      const score = (x / wide) ** 2 + y ** 2;
+      if (!best || score < best.s) best = {x, y, s: score};
+    };
+    if (!out.length) at(0, 0);
+    if (out.length === 1) at(out[0].r + r, 0);
+    for (let i = 0; i < out.length; i++) for (let j = i + 1; j < out.length; j++) {
+      const a = out[i], b = out[j], d = Math.hypot(b.x - a.x, b.y - a.y), ra = a.r + r, rb = b.r + r;
+      if (!d || d > ra + rb) continue;
+      const l = (ra * ra - rb * rb + d * d) / (2 * d), h = Math.sqrt(Math.max(0, ra * ra - l * l));
+      const mx = a.x + l * (b.x - a.x) / d, my = a.y + l * (b.y - a.y) / d, ux = (b.y - a.y) / d, uy = (b.x - a.x) / d;
+      at(mx + h * ux, my - h * uy); at(mx - h * ux, my + h * uy);
+    }
+    out.push({x: best ? best.x : 0, y: best ? best.y : 0, r});
+  }
+  return out;
+}
+const packSig = {};
+function packView(id, groups) {
+  const box = $("s-" + id), zg = zoomed[id] && groups.find((g) => g.name === zoomed[id]);
+  if (zg) {  // one group full screen: each element with its rings and its values
+    const n = zg.items.length, cols = n <= 6 ? 3 : n <= 12 ? 4 : 5;
+    box.className = "zoomin";
+    box.innerHTML = `<div class="zoomhead"><button type="button" data-zoom="${id}">${tr("← All")}</button><h3>${esc(zg.name)}</h3>
+      <span class="label">${n > 1 ? tr("{n} items", {n}) : tr("1 item")}</span>${zg.d ? `<button type="button" data-d="${esc(zg.d)}" style="margin-left:auto">${esc(tr("{name} sheet", {name: zg.name}))}</button>` : ""}</div>
+      <div class="rings" style="grid-template-columns:repeat(${cols},minmax(0,1fr))">${zg.items.map((i) => cell(i, n <= 6 ? 96 : 66, n <= 6 ? "big" : "")).join("")}</div>`;
+    return;
+  }
+  zoomed[id] = null;
+  const R = 10, PAD = 4, LBL = 14, f = (n) => n.toFixed(1), rOf = (it) => it.arcs && it.arcs.length ? R + 1 + it.arcs.length * 1.6 : R;
+  const gs = groups.map((g) => {
+    const ls = pack(g.items.map(rOf)), xs = ls.map((l) => l.x), ys = ls.map((l) => l.y);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    return {...g, ls: ls.map((l) => ({x: l.x - cx, y: l.y - cy})), r: Math.max(...ls.map((l) => Math.hypot(l.x - cx, l.y - cy) + l.r)) + PAD};
+  }).sort((a, b) => b.r - a.r);
+  // Several stretches of the layout, keep the one drawn largest in this screen's box.
+  box.classList.add("pk");  // flex-filled before measuring
+  const bw = box.clientWidth || 1040, bh = box.clientHeight || 560;
+  let at, bx0, bx1, by0, by1, scale = 0;
+  for (const wide of [1, 1.4, 1.8, 2.2, 2.6]) {
+    const a = pack(gs.map((g) => g.r + LBL / 2), wide);
+    const x0 = Math.min(...a.map((c) => c.x - c.r)), x1 = Math.max(...a.map((c) => c.x + c.r));
+    const y0 = Math.min(...a.map((c) => c.y - c.r)), y1 = Math.max(...a.map((c) => c.y + c.r));
+    const k = Math.min(bw / (x1 - x0), bh / (y1 - y0));
+    if (k > scale) [at, bx0, bx1, by0, by1, scale] = [a, x0, x1, y0, y1, k];
+  }
+  const sig = gs.map((g) => g.name + ":" + g.items.map((i) => i.key).join(",")).join("|");
+  let svg = "", n = 0;
+  gs.forEach((g, k) => {
+    const {x, y} = at[k];
+    // Touching a group zooms in on it (the elements keep opening their own sheet).
+    svg += `<g class="pi" style="--i:${n++}" data-zoom="${id}" data-g="${esc(g.name)}"><circle class="pg" cx="${f(x)}" cy="${f(y)}" r="${f(g.r)}"/>` +
+      `<text class="pgl" x="${f(x)}" y="${f(y - g.r - 2)}">${esc(g.name)} · ${g.items.length} ›</text></g>`;
+    g.items.forEach((it, j) => {
+      const lx = x + g.ls[j].x, ly = y + g.ls[j].y, lab = it.label.length > 10 ? it.label.slice(0, 9) + "…" : it.label;
+      const fs = Math.min(4.4, 16.5 / (lab.length * (lab === lab.toUpperCase() ? 0.68 : 0.58)));  // long names shrink to fit
+      svg += `<g class="pi" style="--i:${n++}" data-d="${esc(it.d)}"><circle class="pl lv-${it.lv}" cx="${f(lx)}" cy="${f(ly)}" r="${R}"/>` +
+        (it.lv === "bad" ? `<circle class="alarm" cx="${f(lx)}" cy="${f(ly)}" r="${R}"/>` : "") +
+        (it.arcs || []).map(([k, v, red], i) => {  // the measures as thin arcs on the rim, same colours as the rings
+          const rr = R + 1.6 + i * 1.6;
+          return `<circle class="trk" cx="${f(lx)}" cy="${f(ly)}" r="${f(rr)}"/>` + (v > 0.004 ? `<circle class="arc" data-a="${esc(it.d + "|" + k)}" cx="${f(lx)}" cy="${f(ly)}" r="${f(rr)}" pathLength="100" ` +
+            `stroke="${v >= red ? "var(--bad)" : MET[k][1]}" style="stroke-dasharray:${Math.min(99.9, v * 100).toFixed(1)} 100" transform="rotate(-90 ${f(lx)} ${f(ly)})"/>` : "");
+        }).join("") +
+        `<text class="pll" style="font-size:${f(fs)}px" x="${f(lx)}" y="${f(ly + (it.sub ? 0 : 1.4))}">${esc(lab)}</text>` +
+        (it.sub ? `<text class="pls" x="${f(lx)}" y="${f(ly + 4.6)}">${esc(it.sub)}</text>` : "") + `</g>`;
+    });
+  });
+  // Pop-in only when the set of elements changes; a plain refresh just recolours.
+  box.className = packSig[id] !== sig ? "pk anim" : "pk"; packSig[id] = sig;
+  box.innerHTML = `<svg viewBox="${f(bx0)} ${f(by0)} ${f(bx1 - bx0)} ${f(by1 - by0)}" preserveAspectRatio="xMidYMid meet">${svg}</svg>`;
+}
+
+// ---- Lot 3: live map (swipe up from the carousel). Two views over the same state. ----
+let mapView = "zones", topo = null, topoAt = 0, zoneSig = "";
+const wanHist = [];  // last 40 polls (~10 min) of Internet in + out, for the sparkline
+const hostLevel = (h) => !h ? "na" : !h.up ? "bad" : [level(h.cpu, 0.75, 0.9), level(h.mem, 0.8, 0.92), level(h.disk, 0.75, 0.85)]
+  .reduce((a, b) => (b === "bad" || a === "bad") ? "bad" : (b === "warn" || a === "warn") ? "warn" : "ok", "ok");
+const ring = (h, big) => {
+  const lv = hostLevel(h), cls = !h ? "na" : !h.up ? "off pulse" : lv === "ok" ? "" : lv + (lv === "bad" ? " pulse" : "");
+  const inner = !h || !h.up ? "" : big && h.temp != null ? Math.round(h.temp) + "°" : Math.round((h.cpu || 0) * 100);
+  return {cls: `ring ${big ? "big" : ""} ${cls}`, p: h && h.up ? Math.min(1, h.cpu || 0) : 0, inner};
+};
+
+function zoneItems(s) {
+  const byName = Object.fromEntries(s.hosts.map((h) => [h.name, h]));
+  const items = [];
+  s.nodes.forEach((n) => items.push({zone: "nodes", key: "n-" + n, d: byName[n] ? `host|${n}` : "", label: n, ...ring(byName[n], true)}));
+  s.hosts.filter((h) => h.vm).forEach((h) => items.push({zone: "hosts", key: "h-" + h.name, d: `host|${h.name}`, label: h.name, ...ring(h)}));
+  s.services.forEach((x) => items.push({zone: "services", key: "s-" + x.name, d: `service|${x.name}`, label: x.name, dot: x.status}));
+  return items;
+}
+function seedWan() {
+  if (!WAN()) return;
+  fetch(`/api/detail?kind=port&name=${encodeURIComponent(WAN())}&range=1h`, {cache: "no-store"}).then((r) => r.json()).then((d) => {
+  const [rx, tx] = d.charts[0].series, n = Math.min(rx.points.length, tx.points.length);
+  const seed = Array.from({length: n}, (_, i) => (rx.points[i][1] + tx.points[i][1]) / 1e6).slice(-20);
+  wanHist.unshift(...seed); wanHist.splice(0, Math.max(0, wanHist.length - 40));
+  }).catch(() => {});
+}
+function renderZones(s) {
+  wanHist.push((s.wan.rx || 0) + (s.wan.tx || 0)); if (wanHist.length > 40) wanHist.shift();
+  const items = zoneItems(s), sig = LANG + items.map((i) => i.key).join(",") + "|" + s.storage.length + "|" + s.switches.length;
+  const up = s.hosts.filter((h) => h.up).length, svcUp = s.services.filter((x) => x.status === 1).length;
+  const vms = s.hosts.filter((h) => h.vm), vmUp = vms.filter((h) => h.up).length;
+  const lo = Math.min(...wanHist), hi = Math.max(...wanHist, lo + 1);
+  const spark = wanHist.length > 1 ? `<path d="${wanHist.map((v, i) => `${i ? "L" : "M"}${(i / (wanHist.length - 1) * 200).toFixed(1)} ${(46 - (v - lo) / (hi - lo) * 42).toFixed(1)}`).join("")}" stroke="var(--accent)"/>` : "";
+  const fills = s.storage.map((p) => ({k: p.name, d: `${p.name.startsWith("PBS ") ? "pbs" : "pool"}|${p.name}`, x: p.used / p.size}));
+  const sws = s.switches.map((w) => ({k: w.name, temp: w.temp, cpu: (w.cpu || 0) / 100, cls: level(w.temp, 65, 75)}));
+  const html = {
+    overview: `<h3 data-slide="overview">${tr("Overview")} <span>›</span></h3>
+      <div class="zbig" data-d="fleet|all"><span><b class="${up === s.hosts.length ? "ok" : "bad"}" id="z-up">${up}/${s.hosts.length}</b> <small>${tr("hosts")}</small></span>
+        <span><b class="${svcUp === s.services.length ? "ok" : "bad"}" id="z-svc">${svcUp}/${s.services.length}</b> <small>${tr("services")}</small></span></div>
+      <div ${WAN() ? tap("port", WAN()) : ""}><div class="zrow"><span class="label">Internet</span><span id="z-wan">↓ ${mbits(s.wan.rx)} · ↑ ${mbits(s.wan.tx)}</span></div>
+        <svg class="spark" viewBox="0 0 200 50" preserveAspectRatio="none" id="z-spark">${spark}</svg></div>
+      <div id="z-alerts">${s.alerts.length ? `<ul class="zalerts">${s.alerts.slice(0, 3).map((a) => `<li>${esc(tr(a))}</li>`).join("")}</ul>${s.alerts.length > 3 ? `<div class="label">${tr("+ {n} more", {n: s.alerts.length - 3})}</div>` : ""}` : `<div class="calm" style="font-size:16px;padding:6px 0">${tr("No alerts")}</div>`}</div>`,
+    nodes: `<h3 data-slide="nodes">${tr("Nodes")} <span>›</span></h3><div class="items" style="grid-template-columns:repeat(3,1fr);gap:12px 6px">${items.filter((i) => i.zone === "nodes").map(itemHtml).join("")}</div>`,
+    hosts: `<h3 data-slide="hosts">VM <span id="z-hosts">${vmUp}/${vms.length}</span></h3><div class="items hosts">${items.filter((i) => i.zone === "hosts").map(itemHtml).join("")}</div>`,
+    services: `<h3 data-slide="services">Services <span id="z-svcs">${svcUp}/${s.services.length}</span></h3><div class="items svcs">${items.filter((i) => i.zone === "services").map(itemHtml).join("")}</div>`,
+    storage: `<h3 data-slide="storage">${tr("Storage")} <span>›</span></h3>${fills.map((f) => `<div data-d="${esc(f.d)}"><div class="zrow"><span>${esc(f.k)}</span><span class="label" id="zf-t-${esc(f.k)}">${pct(f.x)}</span></div>
+      <div class="fill"><i id="zf-${esc(f.k)}" class="${level(f.x, 0.75, 0.85)}" style="width:${f.x * 100}%"></i></div></div>`).join("")}
+      <div class="zrow" style="margin-top:4px"><span class="label">${tr("Backups")}</span><span id="z-bk" class="${s.backups.stale.length ? "bad" : "ok"}">${s.backups.stale.length ? tr("{n} late", {n: s.backups.stale.length}) : tr("{n} up to date", {n: s.backups.count})}</span></div>`,
+    network: `<h3 data-slide="network">${tr("Network")} <span>›</span></h3><div class="items" style="grid-template-columns:repeat(${Math.max(1, sws.length)},1fr);gap:10px">${sws.map((w) =>
+      `<div class="it" data-d="switch|${esc(w.k)}"><div class="ring big ${w.cls === "ok" ? "" : w.cls}" id="zs-${esc(w.k)}" style="--p:${w.cpu}"><i>${w.temp == null ? "–" : Math.round(w.temp) + "°"}</i></div><small>${esc(w.k)}</small></div>`).join("")}</div>
+      <div id="z-ports">${s.links.slice(0, 3).map((l) => `<div class="zrow" data-d="port|${esc(l.name)}"><span>${esc(l.name)}</span><span class="label">${mbits(l.bps / 1e6)}</span></div>`).join("")}</div>`,
+  };
+  if (sig !== zoneSig) {
+    // New element set: rebuild once at --p 0, then the next frame sets the real values so the rings sweep in.
+    zoneSig = sig;
+    $("map-zones").innerHTML = ["overview", "nodes", "hosts", "services", "storage", "network"].map((z) => `<div class="zone">${html[z]}</div>`).join("");
+    $("map-zones").querySelectorAll(".ring").forEach((el) => { el.dataset.p = el.style.getPropertyValue("--p"); el.style.setProperty("--p", 0); });
+    requestAnimationFrame(() => requestAnimationFrame(() => $("map-zones").querySelectorAll(".ring").forEach((el) => el.style.setProperty("--p", el.dataset.p))));
+    return;
+  }
+  // Same elements: update in place so transitions animate from the previous values.
+  for (const i of items) {
+    const el = document.getElementById("zi-" + i.key);
+    if (!el) continue;
+    if (i.dot != null) { el.className = `sdot s${i.dot}`; continue; }
+    el.className = i.cls; el.style.setProperty("--p", i.p); el.firstChild.textContent = i.inner;
+  }
+  const zones = $("map-zones").children;
+  zones[0].innerHTML = html.overview;
+  zones[4].innerHTML = html.storage;
+  sws.forEach((w) => { const el = document.getElementById("zs-" + w.k); if (el) { el.style.setProperty("--p", w.cpu); el.className = `ring big ${w.cls === "ok" ? "" : w.cls}`; el.firstChild.textContent = w.temp == null ? "–" : Math.round(w.temp) + "°"; } });
+  $("z-ports").outerHTML = html.network.slice(html.network.indexOf('<div id="z-ports">'));
+  $("z-hosts").textContent = `${vmUp}/${vms.length}`; $("z-svcs").textContent = `${svcUp}/${s.services.length}`;
+}
+function itemHtml(i) {
+  const body = i.dot != null ? `<i class="sdot s${i.dot}" id="zi-${esc(i.key)}"></i>`
+    : `<div class="${i.cls}" id="zi-${esc(i.key)}" style="--p:${i.p}"><i>${i.inner}</i></div>`;
+  return `<div class="it" ${i.d ? `data-d="${esc(i.d)}"` : ""}>${body}<small>${esc(i.label)}</small></div>`;
+}
+
+// Topology: Internet -> router -> switches / AP -> machines -> guests; dashes flow faster with more traffic.
+async function loadTopo() {
+  if (Date.now() - topoAt < 14000) return;
+  topoAt = Date.now();
+  try {
+    const r = await fetch("/api/topology", {cache: "no-store"});
+    const t = await r.json();
+    if (!r.ok) throw new Error(t.error || r.status);
+    const first = !topo;
+    topo = t; $("map-note").textContent = "";
+    paintTopo();
+    if (first && lastState) render(lastState);  // the VM circles group by node once the topology is known
+  } catch (e) { $("map-note").textContent = tr("Topology unavailable: {e}", {e: tr(e.message)}); }
+}
+// Duration from the rate; the negative delay keeps each dash train's phase when the SVG is redrawn.
+const flowDur = (bps) => +Math.max(0.35, 4 - (Math.log10(Math.max(bps, 1e3)) - 3) * 0.65).toFixed(2);
+const flowW = (bps) => (1.5 + Math.max(0, Math.log10(Math.max(bps, 1)) - 3) * 0.8).toFixed(1);
+function paintTopo() {
+  if (!topo || !lastState) return;
+  const t = topo, hosts = Object.fromEntries(lastState.hosts.map((h) => [h.name, h]));
+  const sw = new Set(lastState.switches.map((w) => w.name)), W = 1040, H = 600;
+  const order = [t.router, ...t.gear.map((g) => g.name)];
+  const ms = [...t.machines].sort((a, b) => (order.indexOf(a.parent) - order.indexOf(b.parent)) || a.name.localeCompare(b.name));
+  const PER = 8, rows = ms.map((m) => Math.max(1, Math.ceil(m.guests.length / PER)));
+  const hs = rows.map((r) => 22 + r * 36), total = hs.reduce((a, b) => a + b, 0) + (ms.length - 1) * 10;
+  let y = Math.max(10, (H - total) / 2);
+  const pos = {};
+  ms.forEach((m, i) => { pos[m.name] = {x: 470, y: y + hs[i] / 2}; y += hs[i] + 10; });
+  const kids = (n) => ms.filter((m) => m.parent === n).map((m) => pos[m.name].y);
+  // Gear sits level with its machines; gear without machines goes to the top left, out of the links' way.
+  // Internet enters through the switch that carries the ISP box: it sits between Internet and the router.
+  const wv = t.wan && t.gear.some((g) => g.name === t.wan.via) ? t.wan.via : null, RX = wv ? 185 : 150, GX = wv ? 310 : 290;
+  let spare = 30;
+  t.gear.forEach((g) => {
+    if (g.name === wv) { pos[g.name] = {x: 100, y: H / 2}; return; }
+    const k = kids(g.name);
+    pos[g.name] = {x: GX, y: k.length ? k.reduce((a, b) => a + b) / k.length : spare};
+    if (!k.length) spare += 70;
+  });
+  // Keep gear apart vertically (two switches with machines centred on the same row).
+  t.gear.filter((g) => g.name !== wv).sort((a, b) => pos[a.name].y - pos[b.name].y).reduce((prev, g) => { if (prev != null && pos[g.name].y - prev < 60) pos[g.name].y = prev + 60; return pos[g.name].y; }, null);
+  pos[t.router] = {x: RX, y: H / 2}; pos.Internet = {x: wv ? 26 : 30, y: H / 2};
+  const lvl = (name) => hostLevel(hosts[name]), now = performance.now() / 1000;
+  const link = (a, b, port, ax, bx) => {
+    const p = pos[a], q = pos[b], x1 = p.x + (ax || 0), x2 = q.x - (bx || 0), mx = (x1 + x2) / 2;
+    const d = `M${x1} ${p.y}C${mx} ${p.y} ${mx} ${q.y} ${x2} ${q.y}`, bps = port ? t.bps[port] : null;
+    return `<g ${port ? `data-d="port|${esc(port)}"` : ""}><path class="base" d="${d}" stroke-width="${bps ? flowW(bps) : 1.5}"/>` +
+      (bps ? `<path class="flow" d="${d}" stroke-width="${flowW(bps)}" style="animation-duration:${flowDur(bps)}s;animation-delay:-${(now % flowDur(bps)).toFixed(2)}s"/>` : "") +
+      `<path class="hit" d="${d}"/></g>`;
+  };
+  let svg = wv ? link("Internet", wv, `${wv} ${t.wan.port}`, 18, 18) : link("Internet", t.router, WAN() || null, 18, 22);
+  // Spare switch-to-switch links (RSTP keeps them blocked): dotted, like admin ports.
+  (t.spare || []).forEach((l) => {
+    const a = pos[l.a], b = pos[l.b];
+    if (!a || !b) return;
+    const d = `M${a.x} ${a.y}C${(a.x + b.x) / 2} ${a.y} ${(a.x + b.x) / 2} ${b.y} ${b.x} ${b.y}`;
+    svg += `<g data-d="port|${esc(l.port)}"><path class="adm" d="${d}"/><path class="hit" d="${d}"/></g>`;
+  });
+  t.gear.forEach((g) => {
+    const port = g.port ? `${g.parent} ${g.port}` : null;
+    svg += g.name === wv ? link(g.name, g.parent, port, 18, 22) : link(g.parent, g.name, port, 22, 18);
+  });
+  ms.forEach((m) => { svg += link(m.parent, m.name, m.port ? `${m.parent} ${m.port}` : null, m.parent === t.router ? 22 : 18, 64); });
+  // Admin VLAN port (nodes' 1G link): dotted, no traffic animation, it is not the data path.
+  ms.forEach((m) => {
+    const a = m.admin && pos[m.admin[0]], q = pos[m.name];
+    if (!a) return;
+    const x1 = a.x + 18, x2 = q.x - 64, mx = (x1 + x2) / 2;
+    svg += `<g data-d="port|${esc(m.admin.join(" "))}"><path class="adm" d="M${x1} ${a.y}C${mx} ${a.y} ${mx} ${q.y} ${x2} ${q.y + 8}"/>` +
+      `<path class="hit" d="M${x1} ${a.y}C${mx} ${a.y} ${mx} ${q.y} ${x2} ${q.y + 8}"/></g>`;
+  });
+  const dot = (x, y, r, cls, label, d, sub) => `<g ${d ? `data-d="${esc(d)}"` : ""}><circle cx="${x}" cy="${y}" r="${r}" class="${cls}"/>` +
+    (cls.includes("st-bad") ? `<circle cx="${x}" cy="${y}" r="${r}" class="alarm"/>` : "") +
+    `<text x="${x}" y="${y + r + 12}" text-anchor="middle" class="${sub ? "sm" : ""}">${esc(label)}</text></g>`;
+  const ix = pos.Internet.x;
+  svg += `<g ${WAN() ? tap("port", WAN()) : ""}><circle cx="${ix}" cy="${H / 2}" r="16" class="box"/><text x="${ix}" y="${H / 2 + 4}" text-anchor="middle" class="sm">WAN</text>
+    <text x="${ix}" y="${H / 2 + 30}" text-anchor="middle" class="sm">${wv ? esc(t.wan.name[0].toUpperCase() + t.wan.name.slice(1)) : "Internet"}</text></g>`;
+  svg += dot(RX, H / 2, 20, "box", t.router, sw.has(t.router) ? `switch|${t.router}` : "");
+  t.gear.forEach((g) => { svg += dot(pos[g.name].x, pos[g.name].y, 16, "box", g.name, sw.has(g.name) ? `switch|${g.name}` : ""); });
+  ms.forEach((m, i) => {
+    const {x, y: cy} = pos[m.name], h = hosts[m.name], lv = lvl(m.name);
+    svg += `<g ${h ? `data-d="host|${esc(m.name)}"` : ""}><rect x="${x - 64}" y="${cy - 17}" width="128" height="34" rx="9" class="box ${lv === "bad" ? "st-bad" : ""}"/>
+      <circle cx="${x - 50}" cy="${cy}" r="5" class="st-${lv}"/>${lv === "bad" ? `<circle cx="${x - 50}" cy="${cy}" r="5" class="alarm"/>` : ""}
+      <text x="${x - 40}" y="${cy + 4}">${esc(m.name)}</text><text x="${x + 58}" y="${cy + 4}" text-anchor="end" class="sm">${h && h.up ? Math.round((h.cpu || 0) * 100) + " %" : ""}</text></g>`;
+    const top = cy - (rows[i] * 36) / 2 + 12;
+    if (m.guests.length) svg += `<path class="base" d="M${x + 64} ${cy}H576V${top}V${top + (rows[i] - 1) * 36}" stroke-width="1"/>`;
+    m.guests.forEach((g, j) => {
+      const gx = 592 + (j % PER) * 56, gy = top + Math.floor(j / PER) * 36;
+      svg += dot(gx, gy, 8, "st-" + lvl(g.toUpperCase()), g.length > 9 ? g.slice(0, 8) + "…" : g, hosts[g.toUpperCase()] ? `host|${g.toUpperCase()}` : "", true);
+    });
+  });
+  cards({data: svg});
+}
+
+// Cards: data network (the tree above), then one per other VLAN Cairn Net sees (config order), then the direct storage links.
+const cardTitle = (id) => id === "data" ? tr("Data") + (conf.data_vlan ? " · VLAN " + conf.data_vlan : "") : id === "storage" ? tr("Storage · direct links")
+  : [(conf.vlans.find((v) => v.id === id) || {}).name, "VLAN " + id].filter(Boolean).join(" · ");
+function cards(painted) {
+  const t = topo, vl = Object.keys(t.vlans || {}), order = conf.vlans.map((v) => v.id);
+  const ids = ["data", ...vl.sort((a, b) => ((order.indexOf(a) + 1) || 99) - ((order.indexOf(b) + 1) || 99) || a - b),
+    ...((t.storage || []).length ? ["storage"] : [])];
+  const box = $("topo-cards");
+  if (box.dataset.ids !== LANG + ids.join()) {
+    box.dataset.ids = LANG + ids.join();
+    box.innerHTML = ids.map((id) => `<div class="tcard"><h3>${esc(cardTitle(id))}${id === conf.admin_vlan && (t.spare || []).length ?
+      ` · ${esc(tr("MSTP root {name}", {name: mgRoot(t.spare)}))}` : ""}</h3><div id="tc-${id}"></div></div>`).join("");
+    $("topo-dots").innerHTML = ids.map(() => "<i></i>").join("");
+    dotsOn();
+  }
+  const view = (svg, h) => `<svg viewBox="0 0 1040 ${h || 560}" preserveAspectRatio="xMidYMid meet">${svg}</svg>`;
+  $("tc-data").innerHTML = view(painted.data, 600);
+  ids.filter((id) => id !== "data").forEach((id) => { $("tc-" + id).innerHTML = view(id === "storage" ? paintStorage() : paintVlan(id)); });
+}
+function dotsOn() {
+  const box = $("topo-cards"), i = Math.round(box.scrollLeft / (box.clientWidth || 1));
+  [...$("topo-dots").children].forEach((d, j) => d.classList.toggle("on", j === i));
+}
+$("topo-cards").addEventListener("scroll", dotsOn, {passive: true});
+
+const H2 = 560, now2 = () => performance.now() / 1000;
+// Animated link (same look as the data tree): dashes run faster and thicker with the rate.
+function wire(x1, y1, x2, y2, bps, d) {
+  const mx = (x1 + x2) / 2, p = `M${x1} ${y1}C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`;
+  return `<g ${d ? `data-d="${esc(d)}"` : ""}><path class="base" d="${p}" stroke-width="${bps ? flowW(bps) : 1.5}"/>` +
+    (bps ? `<path class="flow" d="${p}" stroke-width="${flowW(bps)}" style="animation-duration:${flowDur(bps)}s;animation-delay:-${(now2() % flowDur(bps)).toFixed(2)}s"/>` : "") +
+    `<path class="hit" d="${p}"/></g>`;
+}
+function nodeBox(x, y, name, sub, d) {
+  const h = (lastState.hosts || []).find((z) => z.name === name.toUpperCase()), lv = h ? hostLevel(h) : "na";
+  return `<g ${h ? `data-d="host|${esc(h.name)}"` : d ? `data-d="${esc(d)}"` : ""}><rect x="${x - 75}" y="${y - 17}" width="150" height="34" rx="9" class="box"/>
+    <circle cx="${x - 61}" cy="${y}" r="5" class="st-${lv}"/><text x="${x - 51}" y="${y - 1}">${esc(name.length > 15 ? name.slice(0, 14) + "…" : name)}</text>
+    <text x="${x - 51}" y="${y + 11}" class="sm">${esc(sub || "")}</text></g>`;
+}
+const hub = (x, y, name, d) => `<g ${d ? `data-d="${esc(d)}"` : ""}><circle cx="${x}" cy="${y}" r="16" class="box"/><text x="${x}" y="${y + 30}" text-anchor="middle">${esc(name)}</text></g>`;
+
+// One VLAN: router -> switches carrying it -> devices on their ports.
+// The admin VLAN rides the switches' management links, which meet on the MSTP root: the switch
+// with the most management links is drawn as the root of that card, not the router.
+const mgRoot = (mg) => {
+  const c = {};
+  mg.forEach((l) => [l.a, l.b].forEach((n) => { c[n] = (c[n] || 0) + 1; }));
+  return Object.keys(c).sort((a, b) => c[b] - c[a] || a.localeCompare(b))[0];
+};
+function paintVlan(v) {
+  const t = topo, devs = t.vlans[v], mg = v === conf.admin_vlan ? (t.spare || []) : [];
+  const sws = [...new Set([...devs.map((d) => d.sw), ...mg.flatMap((l) => [l.a, l.b])])];
+  const sw = new Set(lastState.switches.map((w) => w.name)), step = Math.min(64, (H2 - 40) / Math.max(1, devs.length));
+  const y0 = (H2 - step * (devs.length - 1)) / 2, ys = {};
+  devs.forEach((d, i) => { (ys[d.sw] = ys[d.sw] || []).push(y0 + i * step); });
+  // Switches without devices here (a switch only in the admin VLAN) go to the top of the switch column.
+  let top = 50;
+  const R = mg.length ? mgRoot(mg) : t.router, ry = H2 / 2, swy = {};
+  sws.forEach((n) => { swy[n] = n === R ? ry : ys[n] ? ys[n].reduce((a, b) => a + b) / ys[n].length : (top += 70) - 70; });
+  const sy = (n) => swy[n], sx = (n) => n === R ? 120 : 420;
+  let svg = "";
+  if (mg.length) {  // admin VLAN: the switches hang together by their management links
+    mg.forEach((l) => { const [a, b] = sx(l.a) <= sx(l.b) ? [l.a, l.b] : [l.b, l.a];
+      svg += wire(sx(a) + 18, sy(a), sx(b) - (sx(a) === sx(b) ? -18 : 18), sy(b), t.bps[l.port], `port|${l.port}`) +
+        `<text x="${sx(b)}" y="${sy(b) + 44}" text-anchor="middle" class="sm">${esc(tr("admin link · {port}", {port: l.port}))}</text>`; });
+  } else {
+    sws.filter((n) => n !== R).forEach((n) => {
+      const g = t.gear.find((x) => x.name === n), port = g && g.port ? `${R} ${g.port}` : null;
+      svg += wire(140, ry, 404, sy(n), port ? t.bps[port] : null, port ? `port|${port}` : "");
+    });
+  }
+  devs.forEach((d, i) => {
+    const x1 = d.sw === R ? 140 : 436, y1 = d.sw === R ? ry : sy(d.sw), port = `${d.sw} ${d.port}`;
+    svg += wire(x1, y1, 760, y0 + i * step, d.port === "Wi-Fi" ? null : t.bps[port], d.port === "Wi-Fi" ? "" : `port|${port}`);
+  });
+  svg += hub(120, ry, R, sw.has(R) ? `switch|${R}` : "");
+  sws.filter((n) => n !== R).forEach((n) => { svg += hub(420, sy(n), n, sw.has(n) ? `switch|${n}` : ""); });
+  devs.forEach((d, i) => { svg += nodeBox(835, y0 + i * step, d.name, `${d.port === "Wi-Fi" ? "Wi-Fi " + d.sw : d.sw + " " + d.port}${d.kind && d.kind !== "unknown" ? " · " + d.kind : ""}`, d.port === "Wi-Fi" ? "" : `port|${d.sw} ${d.port}`); });
+  return svg;
+}
+
+// Direct storage links: each host with its peers, the line runs with the host-side NIC rate.
+function paintStorage() {
+  const links = topo.storage, hostsA = [...new Set(links.map((l) => l.a))], step = Math.min(90, (H2 - 40) / links.length);
+  const y0 = (H2 - step * (links.length - 1)) / 2;
+  let svg = "";
+  links.forEach((l, i) => {
+    const ay = H2 / 2 + (hostsA.indexOf(l.a) - (hostsA.length - 1) / 2) * 90, y = y0 + i * step;
+    svg += wire(355, ay, 685, y, l.bps, `host|${l.a}`);
+    svg += `<text x="520" y="${(ay + y) / 2 - 6}" text-anchor="middle" class="sm">${esc(l.iface)}${l.bps != null ? " · " + mbits(l.bps / 1e6) : ""}</text>`;
+    svg += nodeBox(760, y, l.b, "", "");
+  });
+  hostsA.forEach((a, k) => { svg += nodeBox(280, H2 / 2 + (k - (hostsA.length - 1) / 2) * 90, a, "NAS", ""); });
+  return svg;
+}
+
+function setMapView(view) {
+  mapView = view;
+  [...$("map-views").children].forEach((b) => b.classList.toggle("on", b.dataset.view === view));
+  $("map-zones").hidden = view !== "zones"; $("map-topo").hidden = view !== "topo";
+  if (view === "topo") { topoAt = 0; loadTopo(); }
+}
+$("map-views").addEventListener("click", (e) => { if (e.target.dataset.view) setMapView(e.target.dataset.view); });
+$("to-map").addEventListener("click", () => v.scrollTo({top: $("map").offsetTop, behavior: "smooth"}));
+$("map-close").addEventListener("click", () => showHome());
+// A zone title jumps to its carousel screen.
+$("map-zones").addEventListener("click", (e) => {
+  const h = e.target.closest("[data-slide]");
+  if (!h) return;
+  const i = visible().findIndex((x) => x.dataset.id === h.dataset.slide);
+  showHome(); if (i >= 0) setTimeout(() => go(i), 350);
+});
+setInterval(() => { if (onMap() && mapView === "topo") loadTopo(); }, 5000);
+
+async function poll() {
+  try {
+    const r = await fetch("/api/state", {cache: "no-store"});
+    const s = await r.json();
+    if (!r.ok) throw new Error(s.error || r.status);
+    render(s); lastState = s; lastOk = Date.now(); $("error").style.display = "none";
+  } catch (e) {
+    $("error").textContent = tr("Cannot read the state: {e}", {e: tr(e.message)});
+    $("error").style.display = "block";
+  }
+  clock();
+}
+// Page language: the kiosk's setting, else this browser's choice, else the server's default.
+function setLang(pick) {
+  let saved = "";
+  try { saved = localStorage.getItem("rp-lang") || ""; } catch { /* private window */ }
+  const want = pick || (local && cfg.lang) || saved || conf.lang || "en";
+  if (want === LANG && !pick) return;
+  LANG = want === "fr" ? "fr" : "en";
+  document.documentElement.lang = LANG;
+  document.querySelectorAll("[data-t]").forEach((el) => { el.textContent = tr(el.dataset.t); });
+  legends(); layoutSlides(); renderSettings(); clock();
+  if (sheet) { $("sh-kind").textContent = ""; openSheet(sheet.kind, sheet.name); }
+  if (lastState) { zoneSig = ""; render(lastState); }
+}
+$("langs").addEventListener("click", (e) => {
+  const l = e.target.dataset.lang;
+  if (!l) return;
+  try { localStorage.setItem("rp-lang", l); } catch { /* not kept */ }
+  if (local) { cfg.lang = l; api("/local/settings", {lang: l}).then((r) => { local.settings = r.settings; }).catch(() => {}); }
+  setLang(l);
+});
+
+async function loadConf() {
+  try {
+    const r = await fetch("/api/config", {cache: "no-store"});
+    if (!r.ok) throw new Error(r.status);
+    conf = await r.json();
+  } catch { setTimeout(loadConf, 30000); return; }  // older server or down: keep the defaults, try again
+  document.title = $("title").textContent = conf.title;
+  layoutSlides(); seedWan(); setLang();
+  if (lastState) render(lastState);
+}
+loadConf(); poll(); setInterval(poll, POLL_MS);
+// Pick up a new page version deployed on the server without touching the screen.
+setInterval(() => location.reload(), 6 * 3600 * 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+#!/bin/sh
+# Forced command of rack-panel's SSH key on a Docker host (restart module, see docs/configuration.md):
+# restart one container by name, nothing else. Install as /usr/local/sbin/rack-panel-restart.
+name="$SSH_ORIGINAL_COMMAND"
+case "$name" in
+  "" | -* | *[!A-Za-z0-9_.-]*) echo "container name refused" >&2; exit 2 ;;
+esac
+logger -t rack-panel-restart "docker restart $name (rack screen)"
+exec docker restart -- "$name"
