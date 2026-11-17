@@ -229,4 +229,7 @@ for kind, name in (("host", "PVE1"), ("switch", "CORE"), ("pool", "NAS tank"), (
     d = rp.build_detail(kind, name, "1h", NOW, lambda e: [(r["metric"], float(r["value"][1])) for r in fake.instant_extra(e)],
                         lambda e, s, en, step: [(r["metric"], [(t, float(v)) for t, v in r["values"]]) for r in fake.range_rows(e, s, en, step)])
     assert d["charts"], (kind, d)
+    if kind == "host":                                                   # the example shows two fans, in rpm
+        fans = [s for c in d["charts"] if c["id"] == "fans" for s in c["series"]]
+        assert [s["label"] for s in fans] == ["fan1", "fan2"] and all(p[1] > 500 for s in fans for p in s["points"])
 print("ok")

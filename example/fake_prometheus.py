@@ -175,6 +175,9 @@ def series_labels(expr):
         return "__name__", ["mktxp_system_cpu_temperature", "mktxp_system_switch_temperature"]
     if '"k", "ok"' in expr:
         return "k", ["ok", "total"]
+    if "fan_rpm" in expr:  # only the hosts that report a temperature have fans to show
+        name = re.search(r'host_name="([^"]+)"', expr)
+        return "sensor", ["fan1", "fan2"] if name and name[1] in TEMPS else []
     return None, [None]
 
 
@@ -186,6 +189,8 @@ def base_value(expr, label):
         return next((p[3] for p in PROBES if p[0] == name), 1)
     if "monitor_response_time" in expr:
         return next((p[4] or 50 for p in PROBES if p[0] == name), 50)
+    if "fan_rpm" in expr:
+        return {"fan1": 1450, "fan2": 1100}[label]
     if "temperature" in expr or "hwmon" in expr:
         return TEMPS.get(name, SWITCHES.get(name, (0, 0, 45))[2])
     if "load_average" in expr:

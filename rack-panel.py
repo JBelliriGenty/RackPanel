@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 CACHE_SECONDS = 10
 TOPOLOGY_SECONDS = 300  # Cairn Map is re-read every 5 min

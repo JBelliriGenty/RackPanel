@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1 (2026-11-17)
+
+- Example: the fake Prometheus answers the fan query with two fans in rpm
+  on the hosts that report a temperature (it answered with a temperature).
+
 ## 1.1.0 (2026-11-17)
 
 - Host sheet: a "Fans" chart, one line per fan the host exposes through
