@@ -371,7 +371,7 @@ const FR = {
   "pending": "en attente", "maintenance": "maintenance", "{a}/{b} running": "{a}/{b} en marche",
   "No container reports metrics.": "Aucun conteneur ne remonte de métriques.", "Fullest system disks": "Disques système les plus pleins",
   "All under 60 %": "Tous sous 60 %", "Late: {list}": "En retard : {list}", "All PBS backups are under {h} h old": "Toutes les sauvegardes PBS ont moins de {h} h",
-  "Temperature": "Température", "Busiest ports (in + out)": "Ports les plus chargés (entrée + sortie)",
+  "Temperature": "Température", "Fans": "Ventilateurs","Busiest ports (in + out)": "Ports les plus chargés (entrée + sortie)",
   "admin of {name} (VLAN {v})": "admin de {name} (VLAN {v})", "to {name}": "vers {name}", "admin {a} ↔ {b} (VLAN {v})": "admin {a} ↔ {b} (VLAN {v})",
   "Host": "Hôte", "Uptime Kuma service": "Service Uptime Kuma", "MikroTik switch": "Switch MikroTik", "Network port": "Port réseau",
   "ZFS pool": "Pool ZFS", "PBS datastore": "Datastore PBS", "Docker container": "Conteneur Docker", "Loading…": "Chargement…",
@@ -669,7 +669,7 @@ const COLORS = ["#5aa9ff", "#f2b134", "#34c77b", "#c58cff"];
 const STATUS = {0: ["down", "#f0524f"], 1: ["online", "#34c77b"], 2: ["pending", "#f2b134"], 3: ["maintenance", "#5aa9ff"]};
 const fmt = (v, u) => v == null ? "–" : u === "pct" ? (v < 0.1 && v > 0 ? (v * 100).toFixed(1) : Math.round(v * 100)) + PC()
   : u === "bytes" ? bytes(v) : u === "Bps" ? bytes(v) + "/s" : u === "bps" ? (v < 1e6 ? Math.round(v / 1e3) + " kbit/s" : mbits(v / 1e6))
-  : u === "ms" ? Math.round(v) + " ms" : u === "c" ? Math.round(v) + " °C" : u === "num" ? v.toFixed(2)
+  : u === "ms" ? Math.round(v) + " ms" : u === "c" ? Math.round(v) + " °C" : u === "rpm" ? Math.round(v) + (LANG === "fr" ? " tr/min" : " rpm") : u === "num" ? v.toFixed(2)
   : u === "s" ? since(v) : u === "days" ? Math.round(v) + (LANG === "fr" ? " j" : " d") : u === "status" ? tr((STATUS[v] || ["?"])[0]) : String(Math.round(v));
 let sheetTimer = null, sheetToken = 0, prevVals = {};
 

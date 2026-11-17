@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 (2026-11-17)
+
+- Host sheet: a "Fans" chart, one line per fan the host exposes through
+  node_exporter (`node_hwmon_fan_rpm`, label `sensor`). Empty headers
+  (0 rpm) are left out; a host without the metric shows no chart.
+
 ## 1.0.1 (2026-11-10)
 
 - Host names are compared without case everywhere: a guest whose name

@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 CACHE_SECONDS = 10
 TOPOLOGY_SECONDS = 300  # Cairn Map is re-read every 5 min
@@ -157,6 +157,8 @@ DETAIL = {
             ("disk", "Disk I/O", "Bps", 'sum by (direction)(rate(system_disk_io_bytes_total{host_name=$n, '
              'device!~"dm-.*|loop.*|zd.*|nbd.*"}[$w]))', "direction"),
             ("temp", "Temperature", "c", "max(" + HOST_TEMP.replace("celsius <", "celsius{host_name=$n} <") + ")", None),
+            # One line per fan the host exposes; empty headers (0 rpm) are left out.
+            ("fans", "Fans", "rpm", "node_hwmon_fan_rpm{host_name=$n} > 0", "sensor"),
         ],
         "facts": [
             ("Cores", "count", "sum(system_cpu_logical_count{host_name=$n})"),

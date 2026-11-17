@@ -110,6 +110,10 @@ assert d["charts"][0]["series"][0]["points"] == [[d["start"], 1.0]]      # NaN d
 seen.clear()
 rp.build_detail("container", 'ADMIN n"t', "1h", NOW, lambda e: seen.append((e,)) or [], q_range)
 assert all('host_name="ADMIN", container_name="n\\"t"' in e[0] for e in seen), seen[0]
+d = rp.build_detail("host", "NODE1", "1h", NOW, lambda e: [], lambda e, *a: [
+    ({"sensor": s}, [(NOW, 900.0)]) for s in ("fan2", "fan1")] if "fan_rpm" in e else [])
+assert [(c["id"], c["unit"], [s["label"] for s in c["series"]]) for c in d["charts"]] == [
+    ("fans", "rpm", ["fan1", "fan2"])]                                   # one line per fan, by sensor
 for kind in rp.DETAIL:                                                   # every template substitutes
     rp.build_detail(kind, "A b", "1h", NOW, lambda e: [], lambda *a: [])
 
