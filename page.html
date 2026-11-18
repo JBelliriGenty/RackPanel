@@ -910,12 +910,13 @@ function legends() {
 }
 legends();
 const rate = (b) => b == null ? "–" : b < 1024 ? Math.round(b) + (LANG === "fr" ? " o/s" : " B/s") : bytes(b) + "/s";
-function hostItem(h) {
+function hostItem(h) {  // fans: rpm without the unit, a node tile has no room for it
   const disk = ((lastState || {}).limits || {}).disk || 85;
   return {key: h.name, label: h.name, lv: hostLv(h), d: `host|${h.name}`, sub: h.up ? pct(h.cpu) : tr("offline"),
     arcs: h.up ? [["cpu", h.cpu, 0.9], ["mem", h.mem, 0.92], ["disk", h.disk, disk / 100]] : [],
     pills: h.up ? [["CPU " + pct(h.cpu), "cpu"], [tr("Memory {v}", {v: pct(h.mem)}), "mem"], [tr("Disk {v}", {v: pct(h.disk)}), "disk"],
-      ["↓ " + rate(h.rx)], ["↑ " + rate(h.tx)], ...(h.temp == null ? [] : [[Math.round(h.temp) + " °C"]])] : [[tr("offline")]]};
+      ["↓ " + rate(h.rx)], ["↑ " + rate(h.tx)], ...(h.temp == null ? [] : [[Math.round(h.temp) + " °C"]]),
+      ...(h.fans && h.fans.length ? [["↻ " + h.fans.join(" · ")]] : [])] : [[tr("offline")]]};
 }
 // Concentric arcs around a state dot; length = value. Size in px, drawn in a 48-unit box.
 function gauge(it, size) {

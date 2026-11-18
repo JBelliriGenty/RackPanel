@@ -72,7 +72,7 @@ def wave(key, now, amp=0.12):
 
 def rows(now):
     """Instant rows of every state query, by rack-panel's query key."""
-    r = {k: [] for k in ("cpu", "mem", "arc", "seen", "up", "fs", "temp", "net", "kuma", "kuma_ms", "wan_rx", "wan_tx",
+    r = {k: [] for k in ("cpu", "mem", "arc", "seen", "up", "fs", "temp", "fans", "net", "kuma", "kuma_ms", "wan_rx", "wan_tx",
                          "sw_cpu", "sw_temp", "port_bps", "neighbors", "nic_bps", "ct_cpu", "ct_mem", "ct_memp",
                          "ct_restarts", "ct_seen", "pbs_used", "pbs_size", "pbs_last")}
     for h, (cpu, mem, disk, ram, _, _) in HOSTS.items():
@@ -90,6 +90,7 @@ def rows(now):
                      ({**hn, "direction": "transmit"}, 2e5 * (1 + cpu * 9) * wave(h + "t", now, .5))]
         if h in TEMPS:
             r["temp"].append((hn, TEMPS[h] * wave(h + "c", now, .06)))
+            r["fans"] += [({**hn, "sensor": s}, rpm * wave(h + s, now, .06)) for s, rpm in (("fan1", 1450), ("fan2", 1100))]
     r["arc"].append(({"host_name": "NAS"}, 9 * GiB))
     for h in DOWN:
         r["seen"].append(({"host_name": h}, 1))

@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 CACHE_SECONDS = 10
 TOPOLOGY_SECONDS = 300  # Cairn Map is re-read every 5 min
@@ -80,6 +80,7 @@ def module_queries(o):
             "up": 'count by (host_name)(system_memory_usage_bytes{state="used"})',
             "fs": 'sum by (host_name, mountpoint, device, type, state)(system_filesystem_usage_bytes)',
             "temp": "max by (host_name)(" + HOST_TEMP + ")",
+            "fans": "node_hwmon_fan_rpm > 0",  # empty headers read 0
             # Host traffic (bytes/s) by direction, without loopback, bridges and container/VM interfaces.
             "net": 'sum by (host_name, direction)(rate(system_network_io_bytes_total'
                    '{device!~"lo|veth.*|docker.*|br-.*|fw.*|tap.*|vmbr.*"}[2m]))',
@@ -121,7 +122,7 @@ def module_queries(o):
     return q
 
 
-QUERY_KEYS = ["cpu", "mem", "arc", "seen", "up", "fs", "temp", "net", "kuma", "kuma_ms", "wan_rx", "wan_tx", "sw_cpu",
+QUERY_KEYS = ["cpu", "mem", "arc", "seen", "up", "fs", "temp", "fans", "net", "kuma", "kuma_ms", "wan_rx", "wan_tx", "sw_cpu",
               "sw_temp", "port_bps", "neighbors", "nic_bps", "ct_cpu", "ct_mem", "ct_memp", "ct_restarts", "ct_seen",
               "pbs_used", "pbs_size", "pbs_last"]
 
@@ -400,6 +401,9 @@ def build_state(r, now, limits=None):
 
     cpu, up, temp, arc = by("cpu"), by("up"), by("temp"), by("arc")
     net = {(m["host_name"], m.get("direction")): v for m, v in r["net"]}
+    fans = {}
+    for m, v in sorted(r["fans"], key=lambda x: str(x[0].get("sensor"))):
+        fans.setdefault(m["host_name"], []).append(round(v))
     hosts = []
     for name in sorted(set(by("seen")) | set(up)):
         mm = mem.get(name, {})
@@ -411,6 +415,7 @@ def build_state(r, now, limits=None):
             "mem": max(0, mm.get("used", 0) - arc.get(name, 0)) / (sum(mm.values()) or 1) if mm else None,
             "disk": root.get("used", 0) / (sum(root.values()) or 1) if root else None,
             "temp": temp.get(name),
+            "fans": fans.get(name),  # rpm of each spinning fan, by sensor name; None = none exposed
             "vm": name.upper() not in PHYSICAL,
             "rx": _num(net[(name, "receive")]) if (name, "receive") in net else None,
             "tx": _num(net[(name, "transmit")]) if (name, "transmit") in net else None,

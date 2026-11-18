@@ -29,6 +29,7 @@ ROWS = {
     "fs": fs("NODE1", "/", "/dev/sda1", "ext4", 90, 10)
           + fs("NAS", "/tank/a", "tank/a", "zfs", 30, 60) + fs("NAS", "/tank/b", "tank/b", "zfs", 10, 60),
     "temp": [({"host_name": "NODE1"}, 90)],
+    "fans": [({"host_name": "NODE1", "sensor": "fan2"}, 900.4), ({"host_name": "NODE1", "sensor": "fan1"}, 1200)],
     "kuma": [({"monitor_name": "Grafana", "monitor_type": "http", "monitor_url": "https://grafana.lab.home"}, 0),
              ({"monitor_name": "Dockge", "monitor_type": "keyword", "monitor_url": "https://x.example.org/a"}, 1),
              ({"monitor_name": "Ping MONITOR", "monitor_type": "ping"}, 0)],
@@ -61,7 +62,8 @@ s = rp.build_state(raw, NOW)
 
 node1, vault = s["hosts"]
 assert (node1["name"], node1["up"], node1["mem"], node1["disk"]) == ("NODE1", True, 0.5, 0.9)
-assert vault == {"name": "VAULT", "up": False, "cpu": None, "mem": None, "disk": None, "temp": None, "vm": False, "rx": None, "tx": None}
+assert vault == {"name": "VAULT", "up": False, "cpu": None, "mem": None, "disk": None, "temp": None, "fans": None, "vm": False, "rx": None, "tx": None}
+assert node1["fans"] == [1200, 900]                                      # by sensor name, empty headers left out
 assert (node1["rx"], node1["tx"]) == (1000.0, 869.0)
 assert node1["vm"] is False and "ADMIN" not in rp.PHYSICAL  # bare metal stays off the VM screen
 # Names are compared without case: a lowercase host_name of a configured node is still bare metal.

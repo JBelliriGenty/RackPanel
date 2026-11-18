@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.0 (2026-11-17)
+
+- Tiles: a host that exposes fans shows their speeds as one more value
+  (`↻ 1450 · 1100`, in rpm), on the Nodes screen and wherever a host tile is
+  drawn. `/api/state` gains `fans` per host (rpm by sensor name, or null).
+
 ## 1.1.1 (2026-11-17)
 
 - Example: the fake Prometheus answers the fan query with two fans in rpm
