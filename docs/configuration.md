@@ -48,8 +48,10 @@ No option. Reads the OpenTelemetry Collector's
 [`hostmetrics` receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver)
 (cpu, memory, filesystem, network, load, processes scrapers) with the
 `host_name` label. Optional, from node_exporter on the same `host_name`:
-`node_hwmon_temp_celsius` (temperature; network chips and sensors above
-110 °C are ignored), `node_hwmon_fan_rpm` (fan speeds on the host sheet,
+`node_hwmon_temp_celsius` (temperature, from CPU and disk drivers only:
+`coretemp`, `k10temp`, `zenpower`, `cpu_thermal`, `nvme`, `drivetemp`;
+board, ACPI and network chips are ignored, so is any reading above
+110 °C), `node_hwmon_fan_rpm` (fan speeds on the host sheet,
 one line per `sensor`) and `node_zfs_arc_*` (the part of the ZFS ARC the
 system can take back is not counted as used memory). A host seen in the
 last day but silent now is reported as not answering.

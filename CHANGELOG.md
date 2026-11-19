@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1 (2026-11-19)
+
+- Host temperature: read from CPU and disk drivers only (`coretemp`,
+  `k10temp`, `zenpower`, `cpu_thermal`, `nvme`, `drivetemp`). Super I/O
+  chips such as the NCT6798 expose unwired inputs reading 108-117 °C,
+  which slipped under the 110 °C guard and raised false alerts.
+
 ## 1.2.0 (2026-11-17)
 
 - Tiles: a host that exposes fans shows their speeds as one more value

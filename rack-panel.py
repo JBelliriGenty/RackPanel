@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page.html")
 CACHE_SECONDS = 10
 TOPOLOGY_SECONDS = 300  # Cairn Map is re-read every 5 min
@@ -30,10 +30,11 @@ TOPOLOGY_SECONDS = 300  # Cairn Map is re-read every 5 min
 WEB_PROBES = ("http", "keyword", "json-query")
 _CT = "host_name, container_name"
 CT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
-# Host temperature = CPU, disks, board. Network cards (10 GbE, Wi-Fi) run hot by design
-# (a 10 GbE NIC sits at ~76 °C) and would paint a healthy host orange; sensors above 110 °C are bogus.
-HOST_TEMP = ('node_hwmon_temp_celsius < 110 unless on (host_name, chip)'
-             ' node_hwmon_chip_names{chip_name=~"en.*|eth.*|iwlwifi.*|mt7.*"}')
+# Host temperature = CPU and disk drivers only. Board chips (Super I/O nct67xx/it87, ACPI
+# zones) expose unwired inputs reading 108-117 °C or a constant 27.8 °C; network cards run
+# hot by design (a 10 GbE NIC sits at ~80 °C). Either would raise false alerts.
+HOST_TEMP = ('node_hwmon_temp_celsius < 110 and on (host_name, chip) node_hwmon_chip_names'
+             '{chip_name=~"coretemp|k10temp|zenpower|cpu_thermal|nvme|drivetemp"}')
 ARC_FREEABLE = "node_zfs_arc_size - node_zfs_arc_c_min"
 # Alert thresholds: defaults, overridable per request (?disk=85&temp=85...)
 # from the screen's settings, clamped to sane ranges.
